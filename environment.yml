@@ -1,0 +1,12 @@
+name: rtu_reports
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pandas>=2.0.0
+  - openpyxl>=3.1.0
+  - sqlite3>=3.35.0
+  - pip
+  - pip:
+    - pylib3i>=1.0.0 
