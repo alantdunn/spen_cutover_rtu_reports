@@ -1,0 +1,149 @@
+import pandas as pd
+from data_import.utils import (
+    derive_generic_address_for_poweron_export,
+    split_ioa,
+    compute_offset
+)
+
+def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean the all rtus dataframe."""
+    # | Original Column         | New Column
+    # |-------------------------|------------
+    # | Protocol                | 
+    # | RTU                     | PO_RTU
+    # | RTU Address             | 
+    # | addr1                   | Card or CASDU
+    # | addr2                   | Word or IOA
+    # | comp_alias              | POAlias
+    # | comp_name               | 
+    # | config_extra_info       | ConfigInfo
+    # | config_health           | ConfigHealth
+    # | control_attr            | 
+    # | control_row             | 
+    # | control_type            | 
+    # | control_val             | ControlId
+    # | desc                    | PODescription
+    # | eng_max                 | 
+    # | eng_min                 | 
+    # | eterra_dev_id           | 
+    # | eterra_dev_type         | 
+    # | eterra_point_id         | 
+    # | eterra_point_name       | 
+    # | eterra_sub              | 
+    # | raw_max                 | 
+    # | raw_min                 | 
+    # | recordType              | POType
+    # | scan_attr               | 
+    # | scan_row                | ScanInputRow
+    # | shift                   | Shift
+    # | siref1                  | ScanInputRef
+    # | size                    | Size
+    # | state_alarm_text        | 
+    # | symbol_menu             | Menu
+    # | symbol_name             | Symbol
+    # | telecontrol_action      | TC Action
+    # | verify_attribute        | 
+    # | verify_value            | 
+    # |                         | IOA1
+    # |                         | IOA2
+    # |                         | Offset
+    # |                         | GenericType
+    # |                         | GenericPointAddress
+    # |                         | eTerraAlias
+
+    # rename the columns to the new column names using the mapping in the New Column section - skip the columns that are not in the New Column section
+    df.rename(columns={
+        'Protocol': 'Protocol',
+        'RTU': 'PO_RTU',
+        'RTU Address': 'RTUAddress',
+        'eterra_sub': 'Sub',
+        'eterra_dev_type': 'DeviceType',
+        'eterra_dev_id': 'DeviceId',
+        'eterra_point_id': 'PointId',
+        'addr1': 'Card',
+        'addr2': 'Word',
+        'comp_alias': 'POAlias',
+        'comp_name': 'POName',
+        'control_val': 'ControlId',
+        'config_extra_info': 'ConfigInfo',
+        'config_health': 'ConfigHealth',
+        'desc': 'PODescription',
+        'recordType': 'POType',
+        'scan_row': 'ScanInputRow',
+        'shift': 'Shift',
+        'siref1': 'ScanInputRef',
+        'size': 'Size',
+        'symbol_menu': 'Menu',
+        'symbol_name': 'Symbol',
+        'telecontrol_action': 'TC Action'
+    }, inplace=True)
+
+    def derive_generic_type_from_po_type(po_type):
+        if po_type in ['A1', 'A2', 'A4']:
+            return 'A'
+        elif po_type == 'DI':
+            return 'SD'
+        elif po_type == 'DD':
+            return 'DD'
+        elif po_type == 'DO':
+            return 'C'
+        elif po_type == 'AO':
+            return 'SETPOINT'
+        else:
+            return 'Unknown'
+        
+    # Derive the GenericType from the POType
+    df['GenericType'] = df['POType'].apply(derive_generic_type_from_po_type)
+
+    # Derive the GenericPointAddress from the RTUId, Card, Word, and GenericType
+    df['RTU'] = df['PO_RTU'].str.replace('_RTU', '')
+    df['RTUId'] = '(' + df['RTU'] + ':' + df['RTUAddress'].astype(str) + ')'
+    df['eTerraAlias'] = df['Sub'] + '/' + df['DeviceType'] + '/' + df['DeviceId'] + '/' + df['PointId']
+
+    # Set the card and word for compatibility with common functions
+    df['CASDU'] = df['Card']
+    df['IOA'] = df['Word']
+    df['IOA1', 'IOA2]'] = df.apply(split_ioa, axis=1)
+    df['Offset'] = df.apply(compute_offset, axis=1)
+
+    # Derive the GenericPointAddress from the RTUId, CASDU, IOA1, IOA2, and GenericType
+    df[['GenericPointAddress']] = df.apply(derive_generic_address_for_poweron_export, axis=1)
+
+    # Change a few columns to unique names before we return this dataframe
+    df.rename(columns={
+        'Protocol': 'PO_Protocol',
+        'Card': 'PO_Card',
+        'Word': 'PO_Word',
+        'Offset': 'PO_Offset',
+        'GenericType': 'PO_GenericType',
+        'eTerraAlias': 'PO_eTerraAlias'
+    }, inplace=True)
+
+    # Only return the columns we need
+    # We will only keep the columns in the New Column section
+    columns_to_keep = [
+        'PO_Protocol',
+        'PO_RTU',
+        'PO_Card',
+        'PO_Word',
+        'PO_Offset',
+        'POAlias',
+        'POName',
+        'ConfigInfo',
+        'ConfigHealth',
+        'PODescription',
+        'POType',
+        'ScanInputRow',
+        'Shift',
+        'ScanInputRef',
+        'Size',
+        'Menu',
+        'Symbol',
+        'TC Action',
+        'PO_GenericType',
+        'GenericPointAddress',
+        'PO_eTerraAlias'
+    ]
+
+    df = df[columns_to_keep]
+    return df

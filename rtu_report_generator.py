@@ -6,31 +6,43 @@ import pandas as pd
 import sqlite3
 from pathlib import Path
 from typing import List, Dict, Optional
-from utils import (
+from data_import.utils import (
     filter_data_by_rtu,
     filter_data_by_substation,
-    create_points_section,
-    create_analogs_section,
-    save_report,
-    clean_eterra_point_export,
-    clean_eterra_analog_export,
-    clean_eterra_control_export,
-    clean_habdde_compare,
-    clean_all_rtus,
-    clean_controls_test,
-    clean_compare_alarms,
-    clean_manual_commissioning,
-    clean_eterra_setpoint_control_export,
+)
+from data_import.import_habdde import (
+    import_habdde_export_point_tab,
+    import_habdde_export_analog_tab,
+    derive_rtu_addresses_and_protocols_from_eterra_export,
+    import_habdde_export_control_tab,
+    import_habdde_export_setpoint_control_tab,
     add_control_info_to_eterra_export
+)
+from data_import.import_poweron_rtu_report import clean_all_rtus
+from data_import.import_alarm_compare import clean_compare_alarms
+from data_import.import_controls_auto_test_report import clean_controls_test
+from data_import.import_manual_commissioning_data import clean_manual_commissioning
+from data_import.import_habdde_compare import clean_habdde_compare
+from report_generation import (
+    create_points_section,
+    save_reports
+)
+from defect_reports import (
+    defect_report1,
+    defect_report2,
+    defect_report3,
+    defect_report4,
+    defect_report5,
+    defect_report6
 )
 import configparser
 
-from pylib3i.habdde import read_habdde_tab_into_df
 
 
 CONFIG_FILE = 'rtu_reports.ini'
 DEFAULT_DATA_DIR = 'rtu_report_data'
 DEFAULT_CONFIG_DIR = 'rtu_report_config'
+DEFAULT_OUTPUT_DIR = 'reports'
 
 def load_config(config_path=CONFIG_FILE):
     config = configparser.ConfigParser()
@@ -59,6 +71,14 @@ class RTUReportGenerator:
         else:
             self.debug_dir = None
             print("Debug directory not specified in config")
+
+        # Create output directory if specified in config
+        if 'output_dir' in self.config['Paths']:
+            self.output_dir = Path(self.config['Paths']['output_dir'])
+            self.output_dir.mkdir(exist_ok=True)
+            print(f"Output directory: {self.output_dir}")
+        else:
+            self.output_dir = Path(DEFAULT_OUTPUT_DIR)
         
         # Default file names that will be overridden by config
         self.required_files = {
@@ -105,52 +125,44 @@ class RTUReportGenerator:
             return False
         return True
 
-    def load_data(self):
+    def load_data(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Load all source data into dataframes."""
         try:
             print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_point_export = read_habdde_tab_into_df(self.data_dir / self.required_files['eterra_export'], 'POINT')
-            if self.eterra_point_export is None:
-                raise ValueError("Failed to read POINT tab from eTerra export")
-            self.eterra_point_export = clean_eterra_point_export(self.eterra_point_export)
-            if self.debug_dir:
-                self.eterra_point_export.to_csv(f"{self.debug_dir}/eterra_point_export.csv", index=False)
+            self.eterra_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
             # Create a map of RTU addresses and protocols from the eTerra export
-            self.eterra_rtu_map = self.eterra_point_export[['RTU', 'RTUAddress', 'Protocol']].drop_duplicates()
-            if self.debug_dir:
-                self.eterra_rtu_map.to_csv(f"{self.debug_dir}/eterra_rtu_map.csv", index=False)
+            self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
 
             print(f"Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_analog_export = read_habdde_tab_into_df(self.data_dir / self.required_files['eterra_export'], 'ANALOG')
-            if self.eterra_analog_export is None:
-                raise ValueError("Failed to read ANALOG tab from eTerra export")
-            self.eterra_analog_export = clean_eterra_analog_export(self.eterra_analog_export)
-            if self.debug_dir:
-                self.eterra_analog_export.to_csv(f"{self.debug_dir}/eterra_analog_export.csv", index=False)
+            self.eterra_analog_export = import_habdde_export_analog_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
             
             print(f"Loading control export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_control_export = read_habdde_tab_into_df(self.data_dir / self.required_files['eterra_export'], 'CTRL')
-            if self.eterra_control_export is None:
-                raise ValueError("Failed to read CTRL tab from eTerra export")
-            self.eterra_control_export = clean_eterra_control_export(self.eterra_control_export)
-            if self.debug_dir:
-                self.eterra_control_export.to_csv(f"{self.debug_dir}/eterra_control_export.csv", index=False)
+            self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
             print(f"Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_setpoint_control_export = read_habdde_tab_into_df(self.data_dir / self.required_files['eterra_export'], 'SETPNT')
-            if self.eterra_setpoint_control_export is None:
-                raise ValueError("Failed to read SETPNT tab from eTerra export")
-            self.eterra_setpoint_control_export = clean_eterra_setpoint_control_export(self.eterra_setpoint_control_export)
-            if self.debug_dir:
-                self.eterra_setpoint_control_export.to_csv(f"{self.debug_dir}/eterra_setpoint_control_export.csv", index=False)
+            self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
             # Get just the common columns from point and analog and concatenate them together, sort by GenericPointAddress
             common_columns = [  'GenericPointAddress', 'CASDU', 'Protocol', 'RTU', 'Card',
                                 'RTUAddress', 'RTUId', 'IOA2', 'IOA1', 'IOA', 'PointId', 
                                 'GenericType', 'DeviceType', 'DeviceName', 'DeviceId', 
                                 'Sub', 'Word', 'eTerraKey', 'eTerraAlias', 'Controllable']
-            
+            potentially_common_columns = ['IGNORE_RTU',
+                                'IGNORE_POINT',
+                                'OLD_DATA',
+                                'GridIncomer',
+                                'eTerra Alias',
+                                'ICCP_POINTNAME',
+                                'ICCP->PO',
+                                'ICCP_ALIAS',
+                                'PowerOn Alias',
+                                'PowerOn Alias Exists',
+                                'PowerOn Alias Linked to SCADA']
+            # add the potentially common columns to the common columns if they exist in the point and analog exports
+            common_columns.extend([col for col in potentially_common_columns if col in self.eterra_point_export.columns])
+            common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
+
             print("Combining point and analog exports...")
             eterra_points_common_cols = self.eterra_point_export[common_columns]
             eterra_analogs_common_cols = self.eterra_analog_export[common_columns]
@@ -158,6 +170,11 @@ class RTUReportGenerator:
             eterra_export = eterra_export.sort_values(by='GenericPointAddress')
             if self.debug_dir:
                 eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
+
+            if rtu_name:
+                eterra_export = eterra_export[eterra_export['RTU'] == rtu_name]
+            elif substation:
+                eterra_export = eterra_export[eterra_export['Sub'] == substation]
 
             print("Adding control info to eTerra export...")
             self.eterra_export = add_control_info_to_eterra_export(eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export)
@@ -238,16 +255,71 @@ class RTUReportGenerator:
         print(merged.columns)
 
         
-        # Merge with compare report
+        # Merge with compare report - this needs to be done in 2 parts
+        # 1. First there are some columsn that we want that are associate with the point - to get these we need to get a subset fo columns then de-duplicate before the merge
+        # 2. Then we want to add a small set of fields for each associated alarm.
+        # There are either 2 or 4 alarms per point
+        # SD - 2 alarms for 0 and 1
+        # DD - 4 alarms for 0, 1, 2, 3
+
+        #1.a) get just the useful and point related columns
+        # Get the columns that exist in the merged dataframe
+        available_columns = self.compare_alarms.columns.tolist()
+        
+        # Define the columns we want if they exist
+        desired_columns = [
+            'CompAlarmEterraAlias',
+            'CompAlarmPOAlias', 
+            'CompAlarmeTerraAlarmZone',
+            'CompAlarmeTerraStatus',
+            'CompAlarmPOsubstation',
+            'CompAlarmPOAlarmZone', 
+            'CompAlarmPOAlarmRef',
+            'CompAlarmPOStatus',
+            'CompAlarmAlarmZoneMatch'
+        ]
+        
+        # Only include columns that exist in the merged dataframe
+        point_related_columns = [col for col in desired_columns if col in available_columns]
+        
+        if not point_related_columns:
+            print("Warning: No matching columns found for point_related_columns")
+            point_related_df = self.compare_alarms.copy()
+        else:
+            point_related_df = self.compare_alarms[point_related_columns]
+            point_related_df = point_related_df.drop_duplicates()
+
+        #1.b) merge the point related df with the compare alarms df
         merged = pd.merge(
             merged,
-            self.compare_alarms,
+            point_related_df,
             left_on=['eTerraAlias'],
             right_on=['CompAlarmEterraAlias'],
             how='left'
         )
 
+        #1.c de-duplicate the merged df
+        merged = merged.drop_duplicates()
+        #1.d) add the alarm related columns into Alarm<value>_eTerraMessage and Alarm<value>_POMessage, and Alarm<value>_MessageMatch
+        # Initialize empty columns for all possible alarm values
+        for value in range(4):
+            merged[f'Alarm{value}_eTerraMessage'] = None
+            merged[f'Alarm{value}_POMessage'] = None 
+            merged[f'Alarm{value}_MessageMatch'] = None
 
+        # For each row in merged, find matching rows in compare_alarms and populate corresponding alarm columns
+        for idx, row in merged.iterrows():
+            matching_alarms = self.compare_alarms[
+                self.compare_alarms['CompAlarmEterraAlias'] == row['eTerraAlias']
+            ]
+            
+            # For each matching alarm row, populate the corresponding alarm columns based on CompAlarmValue
+            for _, alarm_row in matching_alarms.iterrows():
+                value = alarm_row['CompAlarmValue']
+                merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
+                merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
+                merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
+        
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
 
         # Merge with controls test
@@ -258,34 +330,57 @@ class RTUReportGenerator:
             merged.to_csv(f"{self.debug_dir}/merged.csv", index=False)
         
         return merged
+    
+    def add_issue_report_flags(self, merged_data: pd.DataFrame) -> pd.DataFrame:
+        """Add issue report flags to the merged data."""
+        # Add a flag for each issue type
+        # 1. Missing Analog components in PowerOn
+        # 2. Missing Controllable Points in PowerOn
+        # 3. Missing Digital Inputs in PowerOn
+        # 4. Components Missing Telecontrol Actions in PowerOn
+        # 5. Items missing from PowerOn that are in eTerra
+        #6. Components missing alarm references in Poweron
+        merged_data = defect_report1(merged_data)
+        
+        return merged_data
 
-    def generate_report(self, rtu_id: Optional[str] = None, substation: Optional[str] = None):
+    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Generate report for specified RTU or substation."""
         if not self.validate_data_files():
             sys.exit(1)
             
-        self.load_data()
-        self.debug_print_dataframes()
+        self.load_data(rtu_name, substation)
+        # self.debug_print_dataframes()
         merged_data = self.merge_data()
+        merged_data = self.add_issue_report_flags(merged_data)
         
         # Filter data based on criteria
-        if rtu_id:
-            filtered_data = filter_data_by_rtu(merged_data, rtu_id)
-        elif substation:
-            filtered_data = filter_data_by_substation(merged_data, substation)
-        else:
-            filtered_data = merged_data
-        
-        # Create report sections
-        points_section = create_points_section(filtered_data)
-        analogs_section = create_analogs_section(filtered_data)
-        
-        # Combine sections
-        report = pd.concat([points_section, analogs_section], ignore_index=True)
+        # if rtu_name:
+        #     filtered_data = filter_data_by_rtu(merged_data, rtu_name)
+        # elif substation:
+        #     filtered_data = filter_data_by_substation(merged_data, substation)
+        # else:
+        #     filtered_data = merged_data
+        filtered_data = merged_data
+        # Get list of RTUs in the filtered data
+        rtus = filtered_data['RTU'].unique()
+        print(f"{len(rtus)} RTUs in the filtered data for the report")
+
+        # We will create a report for each RTU in the filtered data
+        reports = []
+        for rtu in rtus:
+            rtu_data = filter_data_by_rtu(filtered_data, rtu)
+            # Create report sections
+            points_section = create_points_section(rtu_data)
+
+            # Combine sections
+            report_content = pd.concat([points_section], ignore_index=True)
+            report = {'RTU': rtu, 'Content': report_content}
+            reports.append(report)
         
         # Save report
-        output_path = self.data_dir / f"rtu_report_{rtu_id or substation or 'all'}.xlsx"
-        save_report(report, output_path)
+        output_path = self.output_dir / f"rtu_report_{rtu_name or substation or 'all'}.xlsx"
+        save_reports(reports, output_path)
         print(f"Report generated successfully: {output_path}")
 
     
