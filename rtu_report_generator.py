@@ -26,7 +26,8 @@ from data_import.import_manual_commissioning_data import clean_manual_commission
 from data_import.import_habdde_compare import clean_habdde_compare
 from report_generation import (
     create_points_section,
-    save_reports
+    save_reports,
+    generate_defect_report_in_excel
 )
 from defect_reports import (
     defect_report1,
@@ -114,6 +115,10 @@ class RTUReportGenerator:
                 sys.exit(1)
 
             self.data_cache_db = self.data_cache_dir / 'data_cache.db'
+        else:
+            self.data_cache_db = None
+            write_cache = False
+            read_cache = False
 
         print(f"write_cache: {write_cache} read_cache: {read_cache}")
         print(f"data_cache_db: {self.data_cache_db}")
@@ -372,11 +377,61 @@ class RTUReportGenerator:
                 merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
                 merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
         
+        print("Adding control info to merged data...")
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
+        # For each control we need to get the following:
+        # 1. match status from habdde compare
+        # 2. config health from poweron
+        # 3. auto test status from controls test
+        # 4. test result from manual commissioning
+        # 5. telecontrol action from poweron
 
-        # Merge with controls test
 
-        # Merge with manual commissioning
+        # Get the columns that exist in the merged dataframe
+        available_columns = self.eterra_export.columns.tolist()
+        
+        # Go through every row that has at least one control
+        for idx, row in merged.iterrows():
+            if row['Controllable'] == '1':
+                # for each control
+                for ctrl_num in [1, 2]:
+                    ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
+                    if ctrl_addr != '':
+                        # Get the habdde compare info
+                        habdde_compare_info = self.habdde_compare[self.habdde_compare['GenericPointAddress'] == ctrl_addr]
+
+                        # Get the poweron info
+                        poweron_info = self.all_rtus[self.all_rtus['GenericPointAddress'] == ctrl_addr]
+
+                        # Get the controls test info
+                        controls_test_info = self.controls_test[self.controls_test['GenericPointAddress'] == ctrl_addr]
+
+                        # Get the manual commissioning info
+                        manual_commissioning_info = self.manual_commissioning[
+                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
+                            (self.manual_commissioning['CommissioningTestName'] == 'Action Verified')
+                        ]
+
+                        # Add these columns after the Ctrl{n}Addr column
+                        merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info['HbddeCompareStatus'].iloc[0] if len(habdde_compare_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info['ConfigHealth'].iloc[0] if len(poweron_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info['AutoTestResult'].iloc[0] if len(controls_test_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commissioning_info['CommissioningResult'].iloc[0] if len(manual_commissioning_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info['TC Action'].iloc[0]) if len(poweron_info) > 0 else None
+
+                    else:
+                        merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = None
+                        merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = None
+                        merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = None
+                        merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = None
+                        merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = None
+            else:
+                for ctrl_num in [1, 2]:
+                    merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = None
+                    merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = None
+                    merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = None
+                    merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = None
+                    merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = None   
 
         if self.debug_dir:
             print(f"Writing merged data to {self.debug_dir}/merged.csv")
@@ -394,6 +449,14 @@ class RTUReportGenerator:
         # 5. Items missing from PowerOn that are in eTerra
         #6. Components missing alarm references in Poweron
         print("Adding issue report flags to the merged data...")
+         # Convert some columns to boolean if not already
+        merged_data = merged_data.reset_index(drop=True)
+
+        merged_data['PowerOn Alias Exists'] = merged_data['PowerOn Alias Exists'].astype(int).astype(bool)
+        merged_data['IGNORE_RTU'] = merged_data['IGNORE_RTU'].astype(int).astype(bool)
+        merged_data['IGNORE_POINT'] = merged_data['IGNORE_POINT'].astype(int).astype(bool)
+        merged_data['OLD_DATA'] = merged_data['OLD_DATA'].astype(int).astype(bool)
+
         merged_data = defect_report1(merged_data)
         merged_data = defect_report2(merged_data)
         merged_data = defect_report3(merged_data)
@@ -449,83 +512,7 @@ class RTUReportGenerator:
 
     def generate_defect_report(self, merged_data: pd.DataFrame):
         """Generate a defect report for the merged data."""
-        report_columns = [
-            {'ColName': 'GenericPointAddress', 'ColWidth': 25, 'ColFill': None},
-            {'ColName': 'RTU', 'ColWidth': 7, 'ColFill': None}, 
-            {'ColName': 'Sub', 'ColWidth': 7, 'ColFill': None},
-            {'ColName': 'eTerraKey', 'ColWidth': 17, 'ColFill': None},
-            {'ColName': 'eTerraAlias', 'ColWidth': 35, 'ColFill': None},
-            {'ColName': 'GridIncomer', 'ColWidth': 10, 'ColFill': None},
-            {'ColName': 'ICCP->PO', 'ColWidth': 7, 'ColFill': None},
-            {'ColName': 'ICCP_ALIAS', 'ColWidth': 27, 'ColFill': None},
-            {'ColName': 'PowerOn Alias', 'ColWidth': 35, 'ColFill': None},
-            {'ColName': 'PowerOn Alias Exists', 'ColWidth': 7, 'ColFill': None},
-            {'ColName': 'PowerOn Alias Linked to SCADA', 'ColWidth': 7, 'ColFill': None},
-            {'ColName': 'Report1', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Report2', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Report3', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Report4', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Report5', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Report6', 'ColWidth': 8, 'ColFill': None},
-            {'ColName': 'Review Status', 'ColWidth': 12, 'ColFill': 'FFFFE0'},
-            {'ColName': 'Comments', 'ColWidth': 60, 'ColFill': 'FFFFE0'}
-        ]
-        report_fields = [col['ColName'] for col in report_columns]
-
-        # create a new dataframe with the report fields and the new columns
-        report_df = pd.DataFrame(columns=report_fields)
-
-        # First ensure all required columns exist in merged_data
-        for col in report_fields:
-            if col not in merged_data.columns:
-                merged_data[col] = ''  # Add empty column if missing
-                
-        # Now we can safely select and concat
-        report_df = pd.concat([report_df, merged_data[report_fields]], ignore_index=True)
-
-        # save the report dataframe to an xlsx file with formatting
-        writer = pd.ExcelWriter(self.output_dir / f"defect_report_all.xlsx", engine='openpyxl')
-        report_df.to_excel(writer, index=False)
-        
-        # Get the worksheet
-        worksheet = writer.sheets['Sheet1']
-        
-        # Add filters to row 1
-        worksheet.auto_filter.ref = worksheet.dimensions
-        
-        # Format header row
-        for cell in worksheet[1]:
-            cell.font = openpyxl.styles.Font(bold=True)
-            cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
-            
-        # Freeze top row
-        worksheet.freeze_panes = worksheet['F2']
-        
-        # Apply the column widths
-        for idx, col in enumerate(report_columns, 1):
-            worksheet.column_dimensions[get_column_letter(idx)].width = col['ColWidth']
-
-        # Apply the fill colors
-        for idx, col in enumerate(report_columns, 1):
-            if col['ColFill']:
-                for row in range(2, len(report_df) + 2):
-                    cell = worksheet[f"{get_column_letter(idx)}{row}"]
-                    cell.fill = openpyxl.styles.PatternFill(start_color=col['ColFill'], end_color=col['ColFill'], fill_type='solid')
-
-        # Rename report columns to be more readable
-        rename_cols = {
-            'Report1': 'Missing Analog Components',
-            'Report2': 'Missing Controllable Points', 
-            'Report3': 'Missing Digital Inputs',
-            'Report4': 'Components Missing Telecontrol Actions'
-        }
-        for idx, col in enumerate(report_columns, 1):
-            if col['ColName'] in rename_cols:
-                worksheet[f"{get_column_letter(idx)}1"].value = rename_cols[col['ColName']]
-
-        writer.close()
-        
-        print(f"Defect report generated successfully: {self.output_dir / f'defect_report_all.xlsx'}")
+        generate_defect_report_in_excel(merged_data, self.output_dir )
         return
 
     

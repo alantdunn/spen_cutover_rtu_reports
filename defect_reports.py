@@ -16,15 +16,12 @@ def defect_report1(merged_data: pd.DataFrame) -> pd.DataFrame:
     missing_cols = [col for col in required_cols if col not in merged_data.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {', '.join(missing_cols)}")
-    
-    # Convert PowerOn Alias Exists to boolean if not already
-    merged_data = merged_data.reset_index(drop=True)
 
-    # Ensure boolean conversion works correctly
-    merged_data['PowerOn Alias Exists'] = merged_data['PowerOn Alias Exists'].astype(int).astype(bool)
-
-    merged_data['Report1'] = (merged_data['GenericType'] == 'A') & (~merged_data['PowerOn Alias Exists'])
-
+    merged_data['Report1'] =    (merged_data['GenericType'] == 'A') & \
+                                (~merged_data['PowerOn Alias Exists']) & \
+                                (~merged_data['IGNORE_RTU']) & \
+                                (~merged_data['IGNORE_POINT']) & \
+                                (~merged_data['OLD_DATA'])
 
     return merged_data
 
@@ -73,13 +70,13 @@ def defect_report3(merged_data: pd.DataFrame) -> pd.DataFrame:
     if duplicate_cols.any():
         print(f"Duplicate column names found: {merged_data.columns[duplicate_cols]}")
     
-    # Convert PowerOn Alias Exists to boolean if not already
-    merged_data = merged_data.reset_index(drop=True)
 
-    # Ensure boolean conversion works correctly
-    merged_data['PowerOn Alias Exists'] = merged_data['PowerOn Alias Exists'].astype(int).astype(bool)
-
-    merged_data['Report3'] = (merged_data['GenericType'] == 'SD') & (~merged_data['PowerOn Alias Exists'])
+    merged_data['Report3'] =    ((merged_data['GenericType'] == 'SD') | \
+                                (merged_data['GenericType'] == 'DD')) & \
+                                (~merged_data['PowerOn Alias Exists']) & \
+                                (~merged_data['IGNORE_RTU']) & \
+                                (~merged_data['IGNORE_POINT']) & \
+                                (~merged_data['OLD_DATA'])
     return merged_data
 
 
