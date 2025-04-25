@@ -85,7 +85,7 @@ def derive_addresses_for_habdde_export(row):
             'GenericPointAddress': f"[{row['RTUId']}:{row['Card']}:{row['Word']}-{CtrlText} {TypeText}]"
         })
     else:
-        # Convert Word to int
+
         try:
             ioa1 = int(row['Card'])
             ioa2 = int(row['Word'])
@@ -561,7 +561,7 @@ def clean_eterra_setpoint_control_export(df: pd.DataFrame) -> pd.DataFrame:
     df = df[columns_to_keep]
     return df
 
-def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_control_export: pd.DataFrame, eterra_setpoint_control_export: pd.DataFrame) -> pd.DataFrame:
+def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_control_export: pd.DataFrame, eterra_setpoint_control_export: pd.DataFrame, all_rtus: pd.DataFrame, controls_test: pd.DataFrame, manual_commissioning: pd.DataFrame) -> pd.DataFrame:
     """Add control info to the eterra export dataframe."""
 
     # For each row in the eterra export dataframe, add the control info from the eterra control and eterra setpoint control dataframes
@@ -586,6 +586,9 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
         # Get the control info from the eterra setpoint control dataframe
         control_info = eterra_setpoint_control_export[eterra_setpoint_control_export['eTerraAlias'] == row['eTerraAlias']]
         return control_info
+    
+    def get_control_po_config(row, all_rtus: pd.DataFrame):
+        pass
 
     # For each row in the eterra export dataframe, add the control info from the eterra control and eterra setpoint control dataframes
     for _, row in eterra_export.iterrows():

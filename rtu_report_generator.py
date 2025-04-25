@@ -4,6 +4,7 @@ import os
 import sys
 import pandas as pd
 import sqlite3
+
 from pathlib import Path
 from typing import List, Dict, Optional
 from data_import.utils import (
@@ -36,8 +37,8 @@ from defect_reports import (
     defect_report6
 )
 import configparser
-
-
+import openpyxl
+from openpyxl.utils import get_column_letter
 
 CONFIG_FILE = 'rtu_reports.ini'
 DEFAULT_DATA_DIR = 'rtu_report_data'
@@ -50,7 +51,7 @@ def load_config(config_path=CONFIG_FILE):
     return config
 
 class RTUReportGenerator:
-    def __init__(self, config_path=CONFIG_FILE, data_dir=""):
+    def __init__(self, config_path=CONFIG_FILE, data_dir="", write_cache=False, read_cache=False):
         self.config = load_config(config_path)
         if not self.config.has_section('Paths'):
             raise ValueError("Config file missing required 'Paths' section")
@@ -98,6 +99,25 @@ class RTUReportGenerator:
                 for key in self.required_files:
                     if key in config['Files']:
                         self.required_files[key] = config['Files'][key]
+
+        # set the data cache db
+        if write_cache or read_cache:
+            # get the data cache directory from the config file
+            self.data_cache_dir = Path(self.config['Paths']['data_cache_dir'])
+
+            if self.data_cache_dir is None or self.data_cache_dir == "":
+                print("Error: Data cache directory is not specified in the config file")
+                sys.exit(1)
+
+            if not self.data_cache_dir.exists():
+                print(f"Error: Data cache directory does not exist: {self.data_cache_dir}")
+                sys.exit(1)
+
+            self.data_cache_db = self.data_cache_dir / 'data_cache.db'
+
+        print(f"write_cache: {write_cache} read_cache: {read_cache}")
+        print(f"data_cache_db: {self.data_cache_db}")
+
         
         # Initialize dataframes
         self.eterra_point_export = None
@@ -112,6 +132,8 @@ class RTUReportGenerator:
         self.iccp_compare = None
         self.compare_alarms = None
         self.manual_commissioning = None
+        self.merged_data = None
+        
 
     def validate_data_files(self) -> bool:
         """Check if all required files exist in the data directory."""
@@ -124,6 +146,27 @@ class RTUReportGenerator:
             print(f"Error: Missing required files: {', '.join(missing_files)}")
             return False
         return True
+    
+    def write_data_cache(self):
+        """Write the data cache to the database."""
+        # write the merged data to the database
+        if self.merged_data is None:
+            print("No merged data to write to cache")
+            return
+        print(f"Writing data cache to {self.data_cache_db}")
+
+        conn = sqlite3.connect(self.data_cache_db)
+        self.merged_data.to_sql('merged_data', conn, if_exists='replace', index=False)
+        conn.close()
+
+    def read_data_cache(self):
+        """Read the data cache from the database."""
+        # read the merged data from the database
+        print(f"Reading data cache from {self.data_cache_db}")
+        conn = sqlite3.connect(self.data_cache_db)
+        self.merged_data = pd.read_sql_query('SELECT * FROM merged_data', conn)
+        conn.close()
+        print(f"Read {self.merged_data.shape[0]} rows from data cache")
 
     def load_data(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Load all source data into dataframes."""
@@ -161,7 +204,8 @@ class RTUReportGenerator:
                                 'PowerOn Alias Linked to SCADA']
             # add the potentially common columns to the common columns if they exist in the point and analog exports
             common_columns.extend([col for col in potentially_common_columns if col in self.eterra_point_export.columns])
-            common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
+            # TODO: consider if the analog df might have different columns - I dont' think it should
+            #common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
 
             print("Combining point and analog exports...")
             eterra_points_common_cols = self.eterra_point_export[common_columns]
@@ -171,15 +215,13 @@ class RTUReportGenerator:
             if self.debug_dir:
                 eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
 
+            # Filter by RTU name if provided - because we build the whole report off this list this is the only filter we need
             if rtu_name:
+                print(f"Filtering by RTU name: {rtu_name}")
                 eterra_export = eterra_export[eterra_export['RTU'] == rtu_name]
             elif substation:
+                print(f"Filtering by substation: {substation}")
                 eterra_export = eterra_export[eterra_export['Sub'] == substation]
-
-            print("Adding control info to eTerra export...")
-            self.eterra_export = add_control_info_to_eterra_export(eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export)
-            if self.debug_dir:
-                self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export_with_control_info.csv", index=False)
 
             print(f"Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
             self.habdde_compare = pd.read_csv(self.data_dir / self.required_files['habdde_compare'], low_memory=False)
@@ -212,6 +254,12 @@ class RTUReportGenerator:
             self.manual_commissioning = clean_manual_commissioning(self.manual_commissioning)
             if self.debug_dir:
                 self.manual_commissioning.to_csv(f"{self.debug_dir}/manual_commissioning.csv", index=False)
+
+            # Add the control info to the eTerra export now that we also have access to teh all_rtu, control test and manual commissioning data
+            print("Adding control info to eTerra export...")
+            self.eterra_export = add_control_info_to_eterra_export(eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export, self.all_rtus, self.controls_test, self.manual_commissioning)
+            if self.debug_dir:
+                self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export_with_control_info.csv", index=False)
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
@@ -251,8 +299,8 @@ class RTUReportGenerator:
         #     how='left'
         # )
 
-        print("Merge report columns:")
-        print(merged.columns)
+        # print("Merge report columns:")
+        # print(merged.columns)
 
         
         # Merge with compare report - this needs to be done in 2 parts
@@ -299,7 +347,10 @@ class RTUReportGenerator:
         )
 
         #1.c de-duplicate the merged df
+        print(f"De-duplicating merged data...")
         merged = merged.drop_duplicates()
+
+        print(f"Initializing alarm related columns...")
         #1.d) add the alarm related columns into Alarm<value>_eTerraMessage and Alarm<value>_POMessage, and Alarm<value>_MessageMatch
         # Initialize empty columns for all possible alarm values
         for value in range(4):
@@ -308,6 +359,7 @@ class RTUReportGenerator:
             merged[f'Alarm{value}_MessageMatch'] = None
 
         # For each row in merged, find matching rows in compare_alarms and populate corresponding alarm columns
+        print(f"Adding alarm compare related columns to merged data...")
         for idx, row in merged.iterrows():
             matching_alarms = self.compare_alarms[
                 self.compare_alarms['CompAlarmEterraAlias'] == row['eTerraAlias']
@@ -327,6 +379,7 @@ class RTUReportGenerator:
         # Merge with manual commissioning
 
         if self.debug_dir:
+            print(f"Writing merged data to {self.debug_dir}/merged.csv")
             merged.to_csv(f"{self.debug_dir}/merged.csv", index=False)
         
         return merged
@@ -340,36 +393,46 @@ class RTUReportGenerator:
         # 4. Components Missing Telecontrol Actions in PowerOn
         # 5. Items missing from PowerOn that are in eTerra
         #6. Components missing alarm references in Poweron
+        print("Adding issue report flags to the merged data...")
         merged_data = defect_report1(merged_data)
+        merged_data = defect_report2(merged_data)
+        merged_data = defect_report3(merged_data)
         
         return merged_data
 
-    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
+    ''' ================================
+        Generate the report
+        ================================ '''
+    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None, write_cache: bool = False, read_cache: bool = False):
         """Generate report for specified RTU or substation."""
         if not self.validate_data_files():
             sys.exit(1)
-            
-        self.load_data(rtu_name, substation)
-        # self.debug_print_dataframes()
-        merged_data = self.merge_data()
-        merged_data = self.add_issue_report_flags(merged_data)
         
-        # Filter data based on criteria
-        # if rtu_name:
-        #     filtered_data = filter_data_by_rtu(merged_data, rtu_name)
-        # elif substation:
-        #     filtered_data = filter_data_by_substation(merged_data, substation)
-        # else:
-        #     filtered_data = merged_data
-        filtered_data = merged_data
+        if read_cache:
+            self.read_data_cache()
+        
+        if not read_cache or self.merged_data.shape[0] == 0:
+            self.load_data(rtu_name, substation)
+            # self.debug_print_dataframes()
+            self.merged_data = self.merge_data()
+            
+            if write_cache:
+                self.write_data_cache()
+        
+        self.merged_data = self.add_issue_report_flags(self.merged_data)
+
+        self.generate_defect_report(self.merged_data)
+
         # Get list of RTUs in the filtered data
-        rtus = filtered_data['RTU'].unique()
+        rtus = self.merged_data['RTU'].unique()
         print(f"{len(rtus)} RTUs in the filtered data for the report")
+        if (len(rtus) == 0):
+            return False
 
         # We will create a report for each RTU in the filtered data
         reports = []
         for rtu in rtus:
-            rtu_data = filter_data_by_rtu(filtered_data, rtu)
+            rtu_data = filter_data_by_rtu(self.merged_data, rtu)
             # Create report sections
             points_section = create_points_section(rtu_data)
 
@@ -382,6 +445,88 @@ class RTUReportGenerator:
         output_path = self.output_dir / f"rtu_report_{rtu_name or substation or 'all'}.xlsx"
         save_reports(reports, output_path)
         print(f"Report generated successfully: {output_path}")
+
+
+    def generate_defect_report(self, merged_data: pd.DataFrame):
+        """Generate a defect report for the merged data."""
+        report_columns = [
+            {'ColName': 'GenericPointAddress', 'ColWidth': 25, 'ColFill': None},
+            {'ColName': 'RTU', 'ColWidth': 7, 'ColFill': None}, 
+            {'ColName': 'Sub', 'ColWidth': 7, 'ColFill': None},
+            {'ColName': 'eTerraKey', 'ColWidth': 17, 'ColFill': None},
+            {'ColName': 'eTerraAlias', 'ColWidth': 35, 'ColFill': None},
+            {'ColName': 'GridIncomer', 'ColWidth': 10, 'ColFill': None},
+            {'ColName': 'ICCP->PO', 'ColWidth': 7, 'ColFill': None},
+            {'ColName': 'ICCP_ALIAS', 'ColWidth': 27, 'ColFill': None},
+            {'ColName': 'PowerOn Alias', 'ColWidth': 35, 'ColFill': None},
+            {'ColName': 'PowerOn Alias Exists', 'ColWidth': 7, 'ColFill': None},
+            {'ColName': 'PowerOn Alias Linked to SCADA', 'ColWidth': 7, 'ColFill': None},
+            {'ColName': 'Report1', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Report2', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Report3', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Report4', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Report5', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Report6', 'ColWidth': 8, 'ColFill': None},
+            {'ColName': 'Review Status', 'ColWidth': 12, 'ColFill': 'FFFFE0'},
+            {'ColName': 'Comments', 'ColWidth': 60, 'ColFill': 'FFFFE0'}
+        ]
+        report_fields = [col['ColName'] for col in report_columns]
+
+        # create a new dataframe with the report fields and the new columns
+        report_df = pd.DataFrame(columns=report_fields)
+
+        # First ensure all required columns exist in merged_data
+        for col in report_fields:
+            if col not in merged_data.columns:
+                merged_data[col] = ''  # Add empty column if missing
+                
+        # Now we can safely select and concat
+        report_df = pd.concat([report_df, merged_data[report_fields]], ignore_index=True)
+
+        # save the report dataframe to an xlsx file with formatting
+        writer = pd.ExcelWriter(self.output_dir / f"defect_report_all.xlsx", engine='openpyxl')
+        report_df.to_excel(writer, index=False)
+        
+        # Get the worksheet
+        worksheet = writer.sheets['Sheet1']
+        
+        # Add filters to row 1
+        worksheet.auto_filter.ref = worksheet.dimensions
+        
+        # Format header row
+        for cell in worksheet[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+            cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+            
+        # Freeze top row
+        worksheet.freeze_panes = worksheet['F2']
+        
+        # Apply the column widths
+        for idx, col in enumerate(report_columns, 1):
+            worksheet.column_dimensions[get_column_letter(idx)].width = col['ColWidth']
+
+        # Apply the fill colors
+        for idx, col in enumerate(report_columns, 1):
+            if col['ColFill']:
+                for row in range(2, len(report_df) + 2):
+                    cell = worksheet[f"{get_column_letter(idx)}{row}"]
+                    cell.fill = openpyxl.styles.PatternFill(start_color=col['ColFill'], end_color=col['ColFill'], fill_type='solid')
+
+        # Rename report columns to be more readable
+        rename_cols = {
+            'Report1': 'Missing Analog Components',
+            'Report2': 'Missing Controllable Points', 
+            'Report3': 'Missing Digital Inputs',
+            'Report4': 'Components Missing Telecontrol Actions'
+        }
+        for idx, col in enumerate(report_columns, 1):
+            if col['ColName'] in rename_cols:
+                worksheet[f"{get_column_letter(idx)}1"].value = rename_cols[col['ColName']]
+
+        writer.close()
+        
+        print(f"Defect report generated successfully: {self.output_dir / f'defect_report_all.xlsx'}")
+        return
 
     
     def debug_print_dataframes(self):
@@ -427,13 +572,19 @@ def main():
     parser = argparse.ArgumentParser(description="Generate RTU reports from various source files")
     parser.add_argument("--rtu", help="Generate report for specific RTU")
     parser.add_argument("--substation", help="Generate report for specific substation")
+    parser.add_argument("--writecache", action="store_true", help="Write the data cache to the database")
+    parser.add_argument("--readcache", action="store_true", help="Read the data cache from the database")
     parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help="Directory containing source files")
     parser.add_argument("--config-dir", default=DEFAULT_CONFIG_DIR, help="Directory containing config files")
     
     args = parser.parse_args()
+
+    if args.writecache and args.readcache:
+        print("Error: --writecache and --readcache cannot both be True")
+        sys.exit(1)
     
-    generator = RTUReportGenerator(args.config_dir + '/' + CONFIG_FILE, args.data_dir)
-    generator.generate_report(args.rtu, args.substation)
+    generator = RTUReportGenerator(args.config_dir + '/' + CONFIG_FILE, args.data_dir, args.writecache, args.readcache)
+    generator.generate_report(args.rtu, args.substation, args.writecache, args.readcache)
 
 if __name__ == "__main__":
     main() 

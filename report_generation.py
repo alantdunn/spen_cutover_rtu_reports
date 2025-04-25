@@ -49,6 +49,12 @@ def create_points_section(df: pd.DataFrame) -> pd.DataFrame:
                 point['Alarm2_MessageMatch'] = row.get('Alarm2_MessageMatch','')
                 point['Alarm3_MessageMatch'] = row.get('Alarm3_MessageMatch','')
 
+            # Add the Report1 flag
+            point['Report1'] = row.get('Report1', '')
+            point['Report2'] = row.get('Report2', '')
+            point['Report3'] = row.get('Report3', '')
+
+
             points.append(point)
 
     return pd.DataFrame(points)

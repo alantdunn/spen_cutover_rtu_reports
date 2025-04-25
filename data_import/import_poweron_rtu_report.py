@@ -103,7 +103,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
     # Set the card and word for compatibility with common functions
     df['CASDU'] = df['Card']
     df['IOA'] = df['Word']
-    df['IOA1', 'IOA2]'] = df.apply(split_ioa, axis=1)
+    df[['IOA1', 'IOA2']] = df.apply(split_ioa, axis=1, result_type='expand')
     df['Offset'] = df.apply(compute_offset, axis=1)
 
     # Derive the GenericPointAddress from the RTUId, CASDU, IOA1, IOA2, and GenericType
@@ -114,6 +114,8 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'Protocol': 'PO_Protocol',
         'Card': 'PO_Card',
         'Word': 'PO_Word',
+        'IOA1': 'PO_IOA1',
+        'IOA2': 'PO_IOA2',
         'Offset': 'PO_Offset',
         'GenericType': 'PO_GenericType',
         'eTerraAlias': 'PO_eTerraAlias'
@@ -126,6 +128,8 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'PO_RTU',
         'PO_Card',
         'PO_Word',
+        'PO_IOA1',
+        'PO_IOA2',
         'PO_Offset',
         'POAlias',
         'POName',
@@ -144,6 +148,30 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'GenericPointAddress',
         'PO_eTerraAlias'
     ]
+
+    # convert PO_Card to an int then a string
+    try:
+        df['PO_Card'] = df['PO_Card'].astype(int).astype(str)
+    except:
+        pass
+
+    # convert PO_Word to an int then a string
+    try:
+        df['PO_Word'] = df['PO_Word'].astype(int).astype(str)
+    except:
+        pass
+
+    # convert Shift to an int then a string
+    try:
+        df['Shift'] = df['Shift'].astype(int).astype(str)
+    except:
+        pass
+
+    # convert Size to an int then a string
+    try:
+        df['Size'] = df['Size'].astype(int).astype(str)
+    except:
+        pass
 
     df = df[columns_to_keep]
     return df

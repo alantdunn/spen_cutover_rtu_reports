@@ -111,7 +111,7 @@ def compute_offset(row):
     """
     # for IEC rtu's just put the IOA into the offset column
     if row['Protocol'] == 'IEC60870-101':
-        return row['Word']
+        return str(int(row['Word']))
     
     try:
         word = int(row['Word'])
@@ -125,16 +125,23 @@ def compute_offset(row):
         print (f" :heavy_exclamation_mark: Error: shift is not an integer: r{row['PO_RTU']}:c{row['Card']}:w{row['Word']}:b{row['Shift']}:s{row['Size']}")
         return None
 
+    # convert the word to an int and add 1 to account for the fact that the word is 1 based in eTerra
+    word_int = int(word)
+    offset = 0
+
     if row['POType'] == 'DI':
-        return (word * 8) + shift
+        offset = str(int((word_int * 8) + shift))
     elif row['POType'] == 'DD':
-        return (((word * 8) + shift) / 2)
+        offset = str(int(((word_int * 8) + shift) / 2))
     elif row['POType'] == 'A1':
-        return word 
+        offset = str(int(word_int))
     elif row['POType'] == 'A2':
-        return word
+        offset = str(int(word_int))
+    else:
+        offset = str(int(word_int))
     
-    return word
+    # convert to int and add 1 to account for the fact that the word is 1 based in eTerra
+    return str(int(offset) + 1)
     
 
 
