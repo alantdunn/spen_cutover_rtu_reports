@@ -40,6 +40,7 @@ from defect_reports import (
 import configparser
 import openpyxl
 from openpyxl.utils import get_column_letter
+from pylib3i.habdde import remove_dummy_points, get_dummy_points
 
 CONFIG_FILE = 'rtu_reports.ini'
 DEFAULT_DATA_DIR = 'rtu_report_data'
@@ -125,7 +126,9 @@ class RTUReportGenerator:
 
         
         # Initialize dataframes
+        self.eterra_full_point_export = None
         self.eterra_point_export = None
+        self.eterra_dummy_point_export = None
         self.eterra_analog_export = None
         self.eterra_control_export = None
         self.eterra_setpoint_control_export = None
@@ -177,8 +180,9 @@ class RTUReportGenerator:
         """Load all source data into dataframes."""
         try:
             print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
-
+            self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+            self.eterra_point_export = remove_dummy_points(self.eterra_full_point_export)
+            self.eterra_dummy_point_export = get_dummy_points(self.eterra_full_point_export)
             # Create a map of RTU addresses and protocols from the eTerra export
             self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
 
@@ -220,6 +224,8 @@ class RTUReportGenerator:
             if self.debug_dir:
                 eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
 
+            # Look for any points in the control export that are not in the point export, then look for these as dummy points
+
             # Filter by RTU name if provided - because we build the whole report off this list this is the only filter we need
             if rtu_name:
                 print(f"Filtering by RTU name: {rtu_name}")
@@ -260,7 +266,7 @@ class RTUReportGenerator:
             if self.debug_dir:
                 self.manual_commissioning.to_csv(f"{self.debug_dir}/manual_commissioning.csv", index=False)
 
-            # Add the control info to the eTerra export now that we also have access to teh all_rtu, control test and manual commissioning data
+            # Add the control info to the eTerra export now that we also have access to the all_rtu, control test and manual commissioning data
             print("Adding control info to eTerra export...")
             self.eterra_export = add_control_info_to_eterra_export(eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export, self.all_rtus, self.controls_test, self.manual_commissioning)
             if self.debug_dir:
@@ -284,7 +290,10 @@ class RTUReportGenerator:
             on=['GenericPointAddress'],
             how='left'
         )
+        # drop the HabCompKey column
+        merged = merged.drop(columns=['HabCompKey'])
         print(f"Merged eTerra export with habdde compare on {merged.shape[0]} rows")
+
         
         print("Merging with all RTUs ... ")
         # Merge with all RTUs
@@ -295,6 +304,9 @@ class RTUReportGenerator:
             how='left'
         )
         print(f"Merged with all RTUs on {merged.shape[0]} rows")
+
+        # remove the TC Action column - we don't want this for input points but we'll query for it later when we add the control info
+        merged = merged.drop(columns=['TC Action'])
         
         # Merge with ICCP compare
         # merged = pd.merge(
@@ -389,6 +401,14 @@ class RTUReportGenerator:
 
         # Get the columns that exist in the merged dataframe
         available_columns = self.eterra_export.columns.tolist()
+
+        # Add the columns we need to the merged dataframe, but insert them after the CtrlNAddr column
+        for ctrl_num in [1, 2]:
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}Addr') + 1, f'Ctrl{ctrl_num}MatchStatus', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}MatchStatus') + 1, f'Ctrl{ctrl_num}ConfigHealth', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}ConfigHealth') + 1, f'Ctrl{ctrl_num}AutoTestStatus', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}AutoTestStatus') + 1, f'Ctrl{ctrl_num}TestResult', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}TestResult') + 1, f'Ctrl{ctrl_num}TelecontrolAction', None)
         
         # Go through every row that has at least one control
         for idx, row in merged.iterrows():
@@ -412,26 +432,13 @@ class RTUReportGenerator:
                             (self.manual_commissioning['CommissioningTestName'] == 'Action Verified')
                         ]
 
-                        # Add these columns after the Ctrl{n}Addr column
+                        # Populate the columns for this control
                         merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info['HbddeCompareStatus'].iloc[0] if len(habdde_compare_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info['ConfigHealth'].iloc[0] if len(poweron_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info['AutoTestResult'].iloc[0] if len(controls_test_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commissioning_info['CommissioningResult'].iloc[0] if len(manual_commissioning_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info['TC Action'].iloc[0]) if len(poweron_info) > 0 else None
 
-                    else:
-                        merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = None
-                        merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = None
-                        merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = None
-                        merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = None
-                        merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = None
-            else:
-                for ctrl_num in [1, 2]:
-                    merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = None
-                    merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = None
-                    merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = None
-                    merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = None
-                    merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = None   
 
         if self.debug_dir:
             print(f"Writing merged data to {self.debug_dir}/merged.csv")

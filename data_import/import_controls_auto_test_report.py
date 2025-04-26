@@ -1,5 +1,5 @@
 import pandas as pd
-from data_import.utils import derive_rtu_address_and_protocol_from_po_rtu_name
+from data_import.utils import derive_rtu_address_and_protocol_from_po_rtu_name, convert_control_id_to_generic_control_id
 
 def clean_controls_test(df: pd.DataFrame, eterra_rtu_map: pd.DataFrame) -> pd.DataFrame:
     """Clean the controls test dataframe."""
@@ -48,13 +48,29 @@ def clean_controls_test(df: pd.DataFrame, eterra_rtu_map: pd.DataFrame) -> pd.Da
         'telecontrol_action': 'AutoTestAction'
     }, inplace=True)
 
+    def convert_po_rtu_eterra_rtu_name(row):
+        if row['RTU'] == '':
+            return None
+        else:
+            return row['RTU'].replace('_RTU', '')
+        
+    def convert_poweron_word_to_generic_word(row):
+        if row['Word'] == '':
+            return None
+        else:
+            return str(int(row['Word'])+1) # +1 because the word is 1-based in eterra
+        
     # decompose the AutoTestAddress into Card, Word, and CtrlId
     df['Card'] = df['AutoTestAddress'].str.split(':').str[0]
     df['Word'] = df['AutoTestAddress'].str.split(':').str[1]
+    df['Word'] = df.apply(convert_poweron_word_to_generic_word, axis=1)
     df['CtrlId'] = df['AutoTestAddress'].str.split(':').str[2]
+    df['GenericType'] = "C"
     # get the rtu_address and protocol from the RTU and the eterra_rtu_map dataframe
     df[['RTUAddress', 'Protocol']] = df.apply(lambda row: pd.Series(derive_rtu_address_and_protocol_from_po_rtu_name(row, eterra_rtu_map)), axis=1)
-    df['GenericPointAddress'] = '[(' + df['RTUAddress'].astype(str) + ':' + df['Protocol'].astype(str) + '):' + df['Card'].astype(str) + ':' + df['Word'].astype(str) + '-' + df['CtrlId'].astype(str) + ' C]'
+    df['RTU'] = df.apply(convert_po_rtu_eterra_rtu_name, axis=1)
+    df['CtrlId'] = df.apply(lambda row: convert_control_id_to_generic_control_id(row['CtrlId'], row['GenericType']), axis=1)
+    df['GenericPointAddress'] = '[(' + df['RTU'].astype(str) + ':' + df['RTUAddress'].astype(str) + '):' + df['Card'].astype(str) + ':' + df['Word'].astype(str) + '-' + df['CtrlId'].astype(str) + ' C]'
 
     # Only return the columns we need
     # We will only keep the columns in the New Column section

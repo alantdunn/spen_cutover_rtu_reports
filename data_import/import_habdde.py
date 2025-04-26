@@ -1,12 +1,12 @@
 import pandas as pd
-from data_import.utils import combine_ioa, ignore_habbde_point
-from pylib3i.habdde import read_habdde_tab_into_df
+from data_import.utils import combine_ioa, ignore_habbde_point, convert_control_id_to_generic_control_id, get_controllable_for_taps
+from pylib3i.habdde import read_habdde_tab_into_df, read_habdde_point_tab_into_df, remove_dummy_points
 
 
 def import_habdde_export_point_tab(file_path: str, debug_dir: str) -> pd.DataFrame:
     """Import the HABDDE export file."""
     
-    eterra_point_export = read_habdde_tab_into_df(file_path, 'POINT')
+    eterra_point_export = read_habdde_point_tab_into_df(habdde_file=file_path,keep_cols=None,remove_dummy_points=False)
     if eterra_point_export is None:
         raise ValueError("Failed to read POINT tab from eTerra export")
     eterra_point_export = clean_eterra_point_export(eterra_point_export)
@@ -74,7 +74,7 @@ def derive_addresses_for_habdde_export(row):
         if row['CtrlFunc'] == '' or row['CtrlFunc'] is None:
             CtrlText = ""
         else:
-            CtrlText =  row['CtrlFunc']
+            CtrlText =  convert_control_id_to_generic_control_id(row['CtrlFunc'], row['GenericType'])
 
     if row['Protocol'] == 'MK2A':
         return pd.Series({
@@ -318,8 +318,9 @@ def clean_eterra_analog_export(df: pd.DataFrame) -> pd.DataFrame:
     # strip the eTerraKey of any leading or trailing whitespace
     df['eTerraKey'] = df['eTerraKey'].str.strip()
 
-    # Create a dummy Controllable field to make columns match digital columns
+    # Create a dummy Controllable field to make columns match digital columns, and set the Taps to controllable
     df['Controllable'] = '0'
+    df['Controllable'] = df.apply(lambda row: get_controllable_for_taps(row['PointId']), axis=1)
 
     # Only return the columns we need
     # We will only keep the columns in the New Column section
@@ -579,7 +580,16 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
 
     def get_control_info(row):
         # Get the control info from the eterra control and eterra setpoint control dataframes
+        # if the point id is TCP then edit the eTerraAlias to swap TCP for TAP
+        if row['PointId'] == 'TCP':
+            row['eTerraAlias'] = row['eTerraAlias'].replace('TCP', 'TAP')
+
         control_info = eterra_control_export[eterra_control_export['eTerraAlias'] == row['eTerraAlias']]
+
+        # if the point id is TCP then edit the eTerraAlias to swap back to TCP
+        if row['PointId'] == 'TCP':
+            control_info['eTerraAlias'] = control_info['eTerraAlias'].replace('TAP', 'TCP')
+
         return control_info 
     
     def get_setpoint_control_info(row):

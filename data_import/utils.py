@@ -37,6 +37,13 @@ def ignore_habbde_point(row):
             return True
     return False
 
+def get_controllable_for_taps(pointid: str):
+    if pointid == 'TCP':
+        return '1'
+    else:
+        return '0'
+
+
 def derive_rtu_address_and_protocol_from_po_rtu_name(row, eterra_rtu_map: pd.DataFrame):
     # get the eTerra ERU name by removing the text _RTU from the PO_RTU column
     eterra_rtu_name = row['RTU'].replace('_RTU', '')
@@ -46,13 +53,22 @@ def derive_rtu_address_and_protocol_from_po_rtu_name(row, eterra_rtu_map: pd.Dat
         return None, None
     return eterra_rtu_map_row['RTUAddress'].values[0], eterra_rtu_map_row['Protocol'].values[0]
 
+def convert_control_id_to_generic_control_id(control_id, generic_type):
+    if generic_type == 'SETPOINT':
+        return "2"
+    else:
+        if control_id == '1':
+            return "1"
+        else:
+            return "0"
 
 def derive_generic_address_for_poweron_export(row):
     # Handle ControlId - convert nan/None/empty to empty string
     if pd.isna(row['ControlId']) or row['ControlId'] == None or row['ControlId'] == '':
         CtrlText = ''
     else:
-        CtrlText = str(row['ControlId'])
+
+        CtrlText = convert_control_id_to_generic_control_id(row['ControlId'], row['GenericType'])
 
     if row['Protocol'] == 'IEC60870-101':
         return pd.Series({
