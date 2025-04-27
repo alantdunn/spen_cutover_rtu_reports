@@ -4,6 +4,7 @@ import os
 import sys
 import pandas as pd
 import sqlite3
+from rich import print
 
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -183,6 +184,8 @@ class RTUReportGenerator:
             self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
             self.eterra_point_export = remove_dummy_points(self.eterra_full_point_export)
             self.eterra_dummy_point_export = get_dummy_points(self.eterra_full_point_export)
+            if self.debug_dir:
+                self.eterra_dummy_point_export.to_csv(f"{self.debug_dir}/eterra_dummy_point_export.csv", index=False)
             # Create a map of RTU addresses and protocols from the eTerra export
             self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
 
@@ -191,6 +194,28 @@ class RTUReportGenerator:
             
             print(f"Loading control export from {self.data_dir / self.required_files['eterra_export']}")
             self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+
+            # Look for any controls that are not in the point export, then look for these as dummy points
+            print(f"Looking for controls that are not in the point export ... ", end="")
+            no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
+            # remove andy roes that have PointId = "TAP"
+            no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
+            print(f"found {no_input_controls.shape[0]} controls.")
+            if self.debug_dir:
+                no_input_controls.to_csv(f"{self.debug_dir}/no_input_controls.csv", index=False)
+
+            print(f"Looking for dummy points for no input controls ... ", end="")
+            no_input_dummy_points = self.eterra_dummy_point_export[self.eterra_dummy_point_export['eTerraAlias'].isin(no_input_controls['eTerraAlias'])]
+            print(f"found {no_input_dummy_points.shape[0]} dummy points.")
+            if self.debug_dir:
+                no_input_dummy_points.to_csv(f"{self.debug_dir}/no_input_dummy_points.csv", index=False)
+
+            # Get the list of no_input_controls that are not in the dummy points by comparing the original eTerraAlias values
+            no_input_controls_not_dummy_points = no_input_controls[~no_input_controls['eTerraAlias'].isin(self.eterra_dummy_point_export['eTerraAlias'])]
+            print(f"found {no_input_controls_not_dummy_points.shape[0]} controls that are not in the dummy points.")
+            if self.debug_dir:
+                no_input_controls_not_dummy_points.to_csv(f"{self.debug_dir}/no_input_controls_not_dummy_points.csv", index=False)
+
 
             print(f"Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
             self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
