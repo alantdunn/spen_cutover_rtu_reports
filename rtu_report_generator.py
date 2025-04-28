@@ -36,7 +36,11 @@ from defect_reports import (
     defect_report3,
     defect_report4,
     defect_report5,
-    defect_report6
+    defect_report6,
+    defect_report7,
+    defect_report8,
+    defect_report9,
+    defect_report10
 )
 import configparser
 import openpyxl
@@ -168,7 +172,7 @@ class RTUReportGenerator:
         self.merged_data.to_sql('merged_data', conn, if_exists='replace', index=False)
         conn.close()
 
-    def read_data_cache(self):
+    def read_data_cache(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Read the data cache from the database."""
         # read the merged data from the database
         print(f"Reading data cache from {self.data_cache_db}")
@@ -176,126 +180,189 @@ class RTUReportGenerator:
         self.merged_data = pd.read_sql_query('SELECT * FROM merged_data', conn)
         conn.close()
         print(f"Read {self.merged_data.shape[0]} rows from data cache")
+        # filter the data using the rtu_name and substation if they are provided
+        if rtu_name:
+            self.merged_data = self.merged_data[self.merged_data['RTU'] == rtu_name]
+        if substation:
+            self.merged_data = self.merged_data[self.merged_data['Sub'] == substation]
+        print(f"Filtered data to {self.merged_data.shape[0]} rows")
 
+    def load_eterra_export(self):
+        print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
+        self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+        self.eterra_point_export = remove_dummy_points(self.eterra_full_point_export)
+        self.eterra_dummy_point_export = get_dummy_points(self.eterra_full_point_export)
+        if self.debug_dir:
+            self.eterra_dummy_point_export.to_csv(f"{self.debug_dir}/eterra_dummy_point_export.csv", index=False)
+        # Create a map of RTU addresses and protocols from the eTerra export
+        self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
+
+        print(f"Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
+        self.eterra_analog_export = import_habdde_export_analog_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+        
+        print(f"Loading control export from {self.data_dir / self.required_files['eterra_export']}")
+        self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+
+    def add_no_input_controls(self):
+        # Look for any controls that are not in the point export, then look for these as dummy points
+        print(f"Looking for controls that are not in the point export ... ", end="")
+        no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
+        # remove any rows that have PointId = "TAP" - these are dealt with through the TAP/TPC connection in the control load
+        no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
+        print(f"found {no_input_controls.shape[0]} controls.")
+        if self.debug_dir:
+            no_input_controls.to_csv(f"{self.debug_dir}/no_input_controls.csv", index=False)
+
+        print(f"Looking for dummy points for no input controls ... ", end="")
+        no_input_dummy_points = self.eterra_dummy_point_export[self.eterra_dummy_point_export['eTerraAlias'].isin(no_input_controls['eTerraAlias'])]
+        print(f"found {no_input_dummy_points.shape[0]} dummy points.")
+        if self.debug_dir:
+            no_input_dummy_points.to_csv(f"{self.debug_dir}/no_input_dummy_points.csv", index=False)
+
+        # make a copy of no_input_controls so we can create a vesion without eTerraAlias duplicates
+        no_input_controls_deduped = no_input_controls.drop_duplicates(subset=['eTerraAlias'])
+        # in the no_input_dummy_points dataframe, set the RTU to the RTU value from the corresponding row in no_input_controls_deduped
+        no_input_dummy_points['RTU'] = no_input_dummy_points['eTerraAlias'].map(no_input_controls_deduped.set_index('eTerraAlias')['RTU'])
+
+        # Add the no_input_dummy_points to the self.eterra_point_export dataframe
+        self.eterra_point_export = pd.concat([self.eterra_point_export, no_input_dummy_points], ignore_index=True)
+
+
+
+        # # Get the list of no_input_controls that are not in the dummy points by comparing the original eTerraAlias values
+        # alias_of_no_input_controls = no_input_controls['eTerraAlias'].tolist()
+        # alias_of_no_input_dummy_points = no_input_dummy_points['eTerraAlias'].tolist()
+        # no_input_controls_not_dummy_points = [alias for alias in alias_of_no_input_controls if alias not in alias_of_no_input_dummy_points]
+        # print(f"found {len(no_input_controls_not_dummy_points)} controls that are not in the dummy points.")
+        # if self.debug_dir:
+        #     pd.DataFrame(no_input_controls_not_dummy_points, columns=['eTerraAlias']).to_csv(f"{self.debug_dir}/no_input_controls_not_dummy_points.csv", index=False)
+
+        # # get the duplicates from no_input_controls
+        # no_input_controls_duplicates = no_input_controls[no_input_controls.duplicated(subset=['eTerraAlias'])]
+        # print(f"found {no_input_controls_duplicates.shape[0]} duplicate controls.")
+        # if self.debug_dir:
+        #     no_input_controls_duplicates.to_csv(f"{self.debug_dir}/no_input_controls_duplicates.csv", index=False)
+
+    def load_eterra_setpoint_control_export(self):
+        print(f"Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
+        self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+
+
+    def create_base_eterra_export_by_combining_point_and_analog_exports(self):
+        # Get just the common columns from point and analog and concatenate them together, sort by GenericPointAddress
+        common_columns = [  'GenericPointAddress', 'CASDU', 'Protocol', 'RTU', 'Card',
+                            'RTUAddress', 'RTUId', 'IOA2', 'IOA1', 'IOA', 'PointId', 
+                            'GenericType', 'DeviceType', 'DeviceName', 'DeviceId', 
+                            'Sub', 'Word', 'eTerraKey', 'eTerraAlias', 'Controllable']
+        potentially_common_columns = ['IGNORE_RTU',
+                            'IGNORE_POINT',
+                            'OLD_DATA',
+                            'GridIncomer',
+                            'eTerra Alias',
+                            'ICCP_POINTNAME',
+                            'ICCP->PO',
+                            'ICCP_ALIAS',
+                            'PowerOn Alias',
+                            'PowerOn Alias Exists',
+                            'PowerOn Alias Linked to SCADA']
+        # add the potentially common columns to the common columns if they exist in the point and analog exports
+        common_columns.extend([col for col in potentially_common_columns if col in self.eterra_point_export.columns])
+        # TODO: consider if the analog df might have different columns - I dont' think it should
+        #common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
+
+        print("Combining point and analog exports...")
+        eterra_points_common_cols = self.eterra_point_export[common_columns]
+        eterra_analogs_common_cols = self.eterra_analog_export[common_columns]
+        self.eterra_export = pd.concat([eterra_points_common_cols, eterra_analogs_common_cols], ignore_index=True)
+        self.eterra_export = self.eterra_export.sort_values(by='GenericPointAddress')
+        if self.debug_dir:
+            self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
+
+    ''' ********** filter_eterra_export_by_rtu_name_or_substation ********** '''
+    def filter_eterra_export_by_rtu_name_or_substation(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
+        # Filter by RTU name if provided - because we build the whole report off this list this is the only filter we need
+        if rtu_name:
+            print(f"Filtering by RTU name: {rtu_name}")
+            self.eterra_export = self.eterra_export[self.eterra_export['RTU'] == rtu_name]
+        elif substation:
+            print(f"Filtering by substation: {substation}")
+            self.eterra_export = self.eterra_export[self.eterra_export['Sub'] == substation]
+
+    ''' ********** load_habdde_compare ********** '''
+    def load_habdde_compare(self):
+        print(f"Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
+        self.habdde_compare = pd.read_csv(self.data_dir / self.required_files['habdde_compare'], low_memory=False)
+        self.habdde_compare = clean_habdde_compare(self.habdde_compare)
+        if self.debug_dir:
+            self.habdde_compare.to_csv(f"{self.debug_dir}/habdde_compare.csv", index=False)
+
+    ''' ********** load_poweron_data ********** '''
+    def load_poweron_data(self):
+        print(f"Loading poweron data from {self.data_dir / self.required_files['all_rtus']}")
+        self.all_rtus = pd.read_csv(self.data_dir / self.required_files['all_rtus'], low_memory=False)
+        self.all_rtus = clean_all_rtus(self.all_rtus)
+        if self.debug_dir:
+            self.all_rtus.to_csv(f"{self.debug_dir}/all_rtus.csv", index=False)
+
+    ''' ********** load_controls_auto_test_results ********** '''
+    def load_controls_auto_test_results(self):
+        print(f"Loading controls auto test results from {self.data_dir / self.required_files['controls_test']}")
+        self.controls_test = pd.read_csv(self.data_dir / self.required_files['controls_test'])
+        self.controls_test = clean_controls_test(self.controls_test, self.eterra_rtu_map)
+        if self.debug_dir:
+            self.controls_test.to_csv(f"{self.debug_dir}/controls_test.csv", index=False)
+
+    ''' ********** load_compare_alarms ********** '''
+    def load_compare_alarms(self):
+        print(f"Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
+        self.compare_alarms = pd.read_excel(self.data_dir / self.required_files['compare_alarms'], sheet_name='Event Detail')
+        self.compare_alarms = clean_compare_alarms(self.compare_alarms)
+        if self.debug_dir:
+            self.compare_alarms.to_csv(f"{self.debug_dir}/compare_alarms.csv", index=False)
+
+    ''' ********** load_manual_commissioning_results ********** '''
+    def load_manual_commissioning_results(self):
+        print(f"Loading manual commissioning results from {self.data_dir / self.required_files['controls_db']}")
+        conn = sqlite3.connect(self.data_dir / self.required_files['controls_db'])
+        self.manual_commissioning = pd.read_sql_query("SELECT * FROM test_results", conn)
+        conn.close()
+        self.manual_commissioning = clean_manual_commissioning(self.manual_commissioning)
+        if self.debug_dir:
+            self.manual_commissioning.to_csv(f"{self.debug_dir}/manual_commissioning.csv", index=False)
+
+    ''' ********** add_control_info_to_input_rows_in_eterra_export ********** '''
+    def add_control_info_to_input_rows_in_eterra_export(self):
+        print("Adding control info to input rows in eTerra export...")
+        self.eterra_export = add_control_info_to_eterra_export(self.eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export, self.all_rtus, self.controls_test, self.manual_commissioning)
+        if self.debug_dir:
+            self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export_with_control_info.csv", index=False)
+
+
+    ''' ********** load_data ********** '''
     def load_data(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Load all source data into dataframes."""
         try:
-            print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
-            self.eterra_point_export = remove_dummy_points(self.eterra_full_point_export)
-            self.eterra_dummy_point_export = get_dummy_points(self.eterra_full_point_export)
-            if self.debug_dir:
-                self.eterra_dummy_point_export.to_csv(f"{self.debug_dir}/eterra_dummy_point_export.csv", index=False)
-            # Create a map of RTU addresses and protocols from the eTerra export
-            self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
+            self.load_eterra_export() # creates eterra_full_point_export, eterra_point_export, eterra_dummy_point_export, eterra_analog_export, eterra_control_export
 
-            print(f"Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_analog_export = import_habdde_export_analog_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
-            
-            print(f"Loading control export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+            self.load_eterra_setpoint_control_export() # creates eterra_setpoint_control_export
 
-            # Look for any controls that are not in the point export, then look for these as dummy points
-            print(f"Looking for controls that are not in the point export ... ", end="")
-            no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
-            # remove andy roes that have PointId = "TAP"
-            no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
-            print(f"found {no_input_controls.shape[0]} controls.")
-            if self.debug_dir:
-                no_input_controls.to_csv(f"{self.debug_dir}/no_input_controls.csv", index=False)
+            self.add_no_input_controls() # creates no_input_controls, no_input_dummy_points, no_input_controls_not_dummy_points
 
-            print(f"Looking for dummy points for no input controls ... ", end="")
-            no_input_dummy_points = self.eterra_dummy_point_export[self.eterra_dummy_point_export['eTerraAlias'].isin(no_input_controls['eTerraAlias'])]
-            print(f"found {no_input_dummy_points.shape[0]} dummy points.")
-            if self.debug_dir:
-                no_input_dummy_points.to_csv(f"{self.debug_dir}/no_input_dummy_points.csv", index=False)
+            self.create_base_eterra_export_by_combining_point_and_analog_exports() # creates eterra_export - a dataframe with all the point and analog data and only the common columns
 
-            # Get the list of no_input_controls that are not in the dummy points by comparing the original eTerraAlias values
-            no_input_controls_not_dummy_points = no_input_controls[~no_input_controls['eTerraAlias'].isin(self.eterra_dummy_point_export['eTerraAlias'])]
-            print(f"found {no_input_controls_not_dummy_points.shape[0]} controls that are not in the dummy points.")
-            if self.debug_dir:
-                no_input_controls_not_dummy_points.to_csv(f"{self.debug_dir}/no_input_controls_not_dummy_points.csv", index=False)
+            self.filter_eterra_export_by_rtu_name_or_substation(rtu_name, substation) # creates eterra_export_filtered - a filtered version of eterra_export that is filtered by rtu_name or substation
 
+            self.load_habdde_compare()
 
-            print(f"Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
-            self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+            self.load_poweron_data()
 
-            # Get just the common columns from point and analog and concatenate them together, sort by GenericPointAddress
-            common_columns = [  'GenericPointAddress', 'CASDU', 'Protocol', 'RTU', 'Card',
-                                'RTUAddress', 'RTUId', 'IOA2', 'IOA1', 'IOA', 'PointId', 
-                                'GenericType', 'DeviceType', 'DeviceName', 'DeviceId', 
-                                'Sub', 'Word', 'eTerraKey', 'eTerraAlias', 'Controllable']
-            potentially_common_columns = ['IGNORE_RTU',
-                                'IGNORE_POINT',
-                                'OLD_DATA',
-                                'GridIncomer',
-                                'eTerra Alias',
-                                'ICCP_POINTNAME',
-                                'ICCP->PO',
-                                'ICCP_ALIAS',
-                                'PowerOn Alias',
-                                'PowerOn Alias Exists',
-                                'PowerOn Alias Linked to SCADA']
-            # add the potentially common columns to the common columns if they exist in the point and analog exports
-            common_columns.extend([col for col in potentially_common_columns if col in self.eterra_point_export.columns])
-            # TODO: consider if the analog df might have different columns - I dont' think it should
-            #common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
+            self.load_controls_auto_test_results()
 
-            print("Combining point and analog exports...")
-            eterra_points_common_cols = self.eterra_point_export[common_columns]
-            eterra_analogs_common_cols = self.eterra_analog_export[common_columns]
-            eterra_export = pd.concat([eterra_points_common_cols, eterra_analogs_common_cols], ignore_index=True)
-            eterra_export = eterra_export.sort_values(by='GenericPointAddress')
-            if self.debug_dir:
-                eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
+            self.load_compare_alarms()
 
-            # Look for any points in the control export that are not in the point export, then look for these as dummy points
+            self.load_manual_commissioning_results()
 
-            # Filter by RTU name if provided - because we build the whole report off this list this is the only filter we need
-            if rtu_name:
-                print(f"Filtering by RTU name: {rtu_name}")
-                eterra_export = eterra_export[eterra_export['RTU'] == rtu_name]
-            elif substation:
-                print(f"Filtering by substation: {substation}")
-                eterra_export = eterra_export[eterra_export['Sub'] == substation]
-
-            print(f"Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
-            self.habdde_compare = pd.read_csv(self.data_dir / self.required_files['habdde_compare'], low_memory=False)
-            self.habdde_compare = clean_habdde_compare(self.habdde_compare)
-            if self.debug_dir:
-                self.habdde_compare.to_csv(f"{self.debug_dir}/habdde_compare.csv", index=False)
-
-            print(f"Loading all RTUs from {self.data_dir / self.required_files['all_rtus']}")
-            self.all_rtus = pd.read_csv(self.data_dir / self.required_files['all_rtus'], low_memory=False)
-            self.all_rtus = clean_all_rtus(self.all_rtus)
-            if self.debug_dir:
-                self.all_rtus.to_csv(f"{self.debug_dir}/all_rtus.csv", index=False)
-
-            print(f"Loading controls test from {self.data_dir / self.required_files['controls_test']}")
-            self.controls_test = pd.read_csv(self.data_dir / self.required_files['controls_test'])
-            self.controls_test = clean_controls_test(self.controls_test, self.eterra_rtu_map)
-            if self.debug_dir:
-                self.controls_test.to_csv(f"{self.debug_dir}/controls_test.csv", index=False)
-
-            print(f"Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
-            self.compare_alarms = pd.read_excel(self.data_dir / self.required_files['compare_alarms'], sheet_name='Event Detail')
-            self.compare_alarms = clean_compare_alarms(self.compare_alarms)
-            if self.debug_dir:
-                self.compare_alarms.to_csv(f"{self.debug_dir}/compare_alarms.csv", index=False)
-
-            print(f"Loading manual commissioning from {self.data_dir / self.required_files['controls_db']}")
-            conn = sqlite3.connect(self.data_dir / self.required_files['controls_db'])
-            self.manual_commissioning = pd.read_sql_query("SELECT * FROM test_results", conn)
-            conn.close()
-            self.manual_commissioning = clean_manual_commissioning(self.manual_commissioning)
-            if self.debug_dir:
-                self.manual_commissioning.to_csv(f"{self.debug_dir}/manual_commissioning.csv", index=False)
-
-            # Add the control info to the eTerra export now that we also have access to the all_rtu, control test and manual commissioning data
-            print("Adding control info to eTerra export...")
-            self.eterra_export = add_control_info_to_eterra_export(eterra_export, self.eterra_control_export, self.eterra_setpoint_control_export, self.all_rtus, self.controls_test, self.manual_commissioning)
-            if self.debug_dir:
-                self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export_with_control_info.csv", index=False)
+            self.add_control_info_to_input_rows_in_eterra_export()
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
@@ -480,19 +547,32 @@ class RTUReportGenerator:
         # 4. Components Missing Telecontrol Actions in PowerOn
         # 5. Items missing from PowerOn that are in eTerra
         #6. Components missing alarm references in Poweron
+
         print("Adding issue report flags to the merged data...")
-         # Convert some columns to boolean if not already
+        # Convert some columns to boolean if not already
         merged_data = merged_data.reset_index(drop=True)
 
-        merged_data['PowerOn Alias Exists'] = merged_data['PowerOn Alias Exists'].astype(int).astype(bool)
-        merged_data['IGNORE_RTU'] = merged_data['IGNORE_RTU'].astype(int).astype(bool)
-        merged_data['IGNORE_POINT'] = merged_data['IGNORE_POINT'].astype(int).astype(bool)
-        merged_data['OLD_DATA'] = merged_data['OLD_DATA'].astype(int).astype(bool)
+        # Handle NaN values before converting to bool
+        merged_data['PowerOn Alias Exists'] = merged_data['PowerOn Alias Exists'].fillna(0).astype(int).astype(bool)
+        merged_data['IGNORE_RTU'] = merged_data['IGNORE_RTU'].fillna(0).astype(int).astype(bool) 
+        merged_data['IGNORE_POINT'] = merged_data['IGNORE_POINT'].fillna(0).astype(int).astype(bool)
+        merged_data['OLD_DATA'] = merged_data['OLD_DATA'].fillna(0).astype(int).astype(bool)
+
+        # HACK - remove RTU MICR4 from the data
+        merged_data = merged_data[merged_data['RTU'] != 'MICR4']
 
         merged_data = defect_report1(merged_data)
         merged_data = defect_report2(merged_data)
         merged_data = defect_report3(merged_data)
-        
+        merged_data = defect_report4(merged_data)
+        merged_data = defect_report5(merged_data)
+        merged_data = defect_report6(merged_data)
+        merged_data = defect_report7(merged_data)
+        merged_data = defect_report8(merged_data)
+        merged_data = defect_report9(merged_data)
+        merged_data = defect_report10(merged_data)
+
+
         return merged_data
 
     ''' ================================
@@ -504,7 +584,7 @@ class RTUReportGenerator:
             sys.exit(1)
         
         if read_cache:
-            self.read_data_cache()
+            self.read_data_cache(rtu_name, substation)
         
         if not read_cache or self.merged_data.shape[0] == 0:
             self.load_data(rtu_name, substation)
@@ -560,6 +640,7 @@ class RTUReportGenerator:
             print("eterra_control_export row count:", self.eterra_control_export.shape[0])
             print("eterra_control_export columns:")
             print(self.eterra_control_export.columns)
+
             print("eterra_setpoint_control_export row count:", self.eterra_setpoint_control_export.shape[0])
             print("eterra_setpoint_control_export columns:")
             print(self.eterra_setpoint_control_export.columns)

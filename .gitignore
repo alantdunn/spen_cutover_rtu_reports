@@ -46,6 +46,8 @@ logs/
 # Data
 data/
 rtu_report_data/
-
+data_cache/
 debug/
 
+*.db
+*.xlsx

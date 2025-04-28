@@ -178,7 +178,10 @@ def clean_eterra_point_export(df: pd.DataFrame) -> pd.DataFrame:
     df['Size'] = df['concat_conect'].apply(lambda x: 2 if x == 1 else 1 if x == 0 else x)
 
     def derive_generic_type(row):
-        if row['Size'] == 1:
+        # look for Dummy Rows - Card and CASDU will be empty or Nan
+        if pd.isna(row['Card']) and pd.isna(row['CASDU']):
+            return 'DUMMY'
+        elif row['Size'] == 1:
             return 'SD'
         elif row['Size'] == 2:
             return 'DD'

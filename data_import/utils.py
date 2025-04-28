@@ -76,7 +76,7 @@ def derive_generic_address_for_poweron_export(row):
         })
     else:
         return pd.Series({
-            'GenericPointAddress': f"[{row['RTUId']}:{row['Card']}:{str(row['Offset'])}-{CtrlText} {row['GenericType']}]"
+            'GenericPointAddress': f"[{row['RTUId']}:{str( 0xFF & int(row['Card'])) }:{(str(row['Offset']))}-{CtrlText} {row['GenericType']}]"
         })
     
 def split_ioa(row):
