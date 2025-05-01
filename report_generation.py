@@ -259,7 +259,7 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
         {'dfCol': 'Report5',            'ColName': 'Components Missing Alarm Reference',        'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report6',            'ColName': 'Controls not in PO but tested ok',          'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report7',            'ColName': 'Controls Not Linked',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report8',            'ColName': 'TBD8',                                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
+        {'dfCol': 'Report8',            'ColName': 'Ctrl-able eTerra Points with no Controls',  'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report9',            'ColName': 'TBD9',                                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report10',           'ColName': 'TBD10',                                     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Review Status',                  'ColName': 'Review Status',                 'ColWidth': 12,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None},

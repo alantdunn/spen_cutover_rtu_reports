@@ -1,5 +1,13 @@
 import pandas as pd
 
+
+def check_report_results(merged_data: pd.DataFrame, report_name: str):
+    """
+    Check the results of a defect report.
+    """
+    print(f"Check: {report_name} has {merged_data[merged_data[report_name] == True].shape[0]} rows")
+
+
 def defect_report1(merged_data: pd.DataFrame) -> pd.DataFrame:
     """
     Generate a defect report for missing analog components in PowerOn.
@@ -23,6 +31,7 @@ def defect_report1(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA'])
 
+    check_report_results(merged_data, 'Report1')
     return merged_data
 
 def defect_report2(merged_data: pd.DataFrame) -> pd.DataFrame:
@@ -50,6 +59,7 @@ def defect_report2(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (~merged_data['IGNORE_RTU']) & \
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA'])
+    check_report_results(merged_data, 'Report2')
     return merged_data
 
 
@@ -78,7 +88,7 @@ def defect_report3(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (~merged_data['IGNORE_RTU']) & \
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA']))
-
+    check_report_results(merged_data, 'Report3')
     return merged_data
 
 
@@ -107,6 +117,7 @@ def defect_report4(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (~merged_data['IGNORE_RTU']) & \
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA'])
+    check_report_results(merged_data, 'Report4')
     return merged_data
 
 
@@ -126,26 +137,56 @@ def defect_report5(merged_data: pd.DataFrame) -> pd.DataFrame:
     # GenericTye is SD or DD
     # CompAlarmPOAlarmRef is 0 or null
     # any <num> of 0-3 for Alarm<num>_eTerraMessage is not null and  Alarm<num>_POMessage is null
+
+    # debug some data
+    # debugdata = merged_data[
+    #                             ((merged_data['GenericType'] == 'SD') | \
+    #                             (merged_data['GenericType'] == 'DD')) \
+    #                             & \
+    #                             (merged_data['PowerOn Alias Exists']) \
+    #                             & \
+    #                             (merged_data['PowerOn Alias Linked to SCADA'] == 2) \
+    #                             & \
+    #                             ((merged_data['CompAlarmPOAlarmRef'] == 0) | \
+    #                             (merged_data['CompAlarmPOAlarmRef'].isna())) \
+    #                             & \
+    #                             ((merged_data['Alarm0_MessageMatch'] == 0) | \
+    #                             (merged_data['Alarm1_MessageMatch'] == 0) | \
+    #                             (merged_data['Alarm2_MessageMatch'] == 0) | \
+    #                             (merged_data['Alarm3_MessageMatch'] == 0)) \
+    #                             & \
+    #                             (merged_data['ConfigHealth'] == 'GOOD') \
+    #                             & \
+    #                             (~merged_data['IGNORE_RTU']) & \
+    #                             (~merged_data['IGNORE_POINT']) & \
+    #                             (~merged_data['OLD_DATA'])
+    # ]
+    # print(debugdata[['eTerraAlias', 'CompAlarmPOAlarmRef','ConfigHealth', 'PowerOn Alias Linked to SCADA']].head(10))
+    # exit(0)
+
     merged_data['Report5'] =   ((merged_data['GenericType'] == 'SD') | \
                                 (merged_data['GenericType'] == 'DD')) \
                                 & \
                                 (merged_data['PowerOn Alias Exists']) \
                                 & \
-                                (merged_data['PowerOn Alias Linked to SCADA'] == '2') \
+                                (merged_data['PowerOn Alias Linked to SCADA'] == 2) \
                                 & \
                                 ((merged_data['CompAlarmPOAlarmRef'] == 0) | \
                                 (merged_data['CompAlarmPOAlarmRef'].isna())) \
                                 & \
-                                ((merged_data['Alarm0_MessageMatch'] == '0') | \
-                                (merged_data['Alarm1_MessageMatch'] == '0') | \
-                                (merged_data['Alarm2_MessageMatch'] == '0') | \
-                                (merged_data['Alarm3_MessageMatch'] == '0')) \
+                                ((merged_data['Alarm0_MessageMatch'] == 0) | \
+                                (merged_data['Alarm1_MessageMatch'] == 0) | \
+                                (merged_data['Alarm2_MessageMatch'] == 0) | \
+                                (merged_data['Alarm3_MessageMatch'] == 0)) \
                                 & \
                                 (merged_data['ConfigHealth'] == 'GOOD') \
                                 & \
                                 (~merged_data['IGNORE_RTU']) & \
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA'])
+    
+    check_report_results(merged_data, 'Report5')
+
     return merged_data
 
 
@@ -176,6 +217,7 @@ def defect_report6(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (~merged_data['IGNORE_RTU']) & \
                                 (~merged_data['IGNORE_POINT']) & \
                                 (~merged_data['OLD_DATA'])
+    check_report_results(merged_data, 'Report6')
     return merged_data
 
 
@@ -232,16 +274,23 @@ def defect_report7(merged_data: pd.DataFrame) -> pd.DataFrame:
                                 (merged_data['Ctrl2ConfigHealth'].isnull()))) \
                                 & \
                                 (merged_data['DeviceType'] != 'RTU')
+    check_report_results(merged_data, 'Report7')
     return merged_data
 
 def defect_report8(merged_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Generate a defect report for tbd.
+    Generate a defect report for points that are marked as controllable but have no Ctrl1Name or Ctrl2Name.
     
     Args:
         merged_data (pd.DataFrame): The merged data from the RTU report generator.
     """
     print("Generating defect report 8 ...")
+    merged_data['Report8'] =   (merged_data['Controllable'] == 1) & \
+                                ((merged_data['Ctrl1Name'].isnull() | merged_data['Ctrl2Name'].isnull())) & \
+                                (~merged_data['IGNORE_RTU']) & \
+                                (~merged_data['IGNORE_POINT']) & \
+                                (~merged_data['OLD_DATA'])
+    check_report_results(merged_data, 'Report8')
     return merged_data
 
 def defect_report9(merged_data: pd.DataFrame) -> pd.DataFrame:
@@ -252,7 +301,10 @@ def defect_report9(merged_data: pd.DataFrame) -> pd.DataFrame:
         merged_data (pd.DataFrame): The merged data from the RTU report generator.
     """
     print("Generating defect report 9 ...")
-    return merged_data  \
+
+    merged_data['Report9'] = False
+    check_report_results(merged_data, 'Report9')
+    return merged_data
 
 def defect_report10(merged_data: pd.DataFrame) -> pd.DataFrame:
     """
@@ -262,4 +314,6 @@ def defect_report10(merged_data: pd.DataFrame) -> pd.DataFrame:
         merged_data (pd.DataFrame): The merged data from the RTU report generator.
     """ 
     print("Generating defect report 10 ...")
+    merged_data['Report10'] = False
+    check_report_results(merged_data, 'Report10')
     return merged_data

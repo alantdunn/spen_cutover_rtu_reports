@@ -475,12 +475,22 @@ class RTUReportGenerator:
             ]
             
             # For each matching alarm row, populate the corresponding alarm columns based on CompAlarmValue
+            num_alarms = 0
+            num_alarms_matched = 0
             for _, alarm_row in matching_alarms.iterrows():
                 value = alarm_row['CompAlarmValue']
                 merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
                 merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
                 merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
-        
+                num_alarms += 1
+
+                if alarm_row[f'CompAlarmAlarmMessageMatch'] == '1':
+                    num_alarms_matched += 1
+                
+        merged.at[idx, 'NumAlarms'] = num_alarms
+        merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
+        merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
+
         print("Adding control info to merged data...")
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
         # For each control we need to get the following:
@@ -505,24 +515,58 @@ class RTUReportGenerator:
         # Go through every row that has at least one control
         for idx, row in merged.iterrows():
             if row['Controllable'] == '1':
+                num_controls = 0
+                num_controls_matched = 0
+                num_controls_config_good = 0
+                num_controls_commission_ok = 0
+                num_controls_all_commission_ok = 0
+
                 # for each control
                 for ctrl_num in [1, 2]:
                     ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
                     if ctrl_addr != '':
+                        num_controls += 1
+                        num_controls_matched += 1
                         # Get the habdde compare info
                         habdde_compare_info = self.habdde_compare[self.habdde_compare['GenericPointAddress'] == ctrl_addr]
 
                         # Get the poweron info
                         poweron_info = self.all_rtus[self.all_rtus['GenericPointAddress'] == ctrl_addr]
 
+                        if len(poweron_info) > 0:
+                            if poweron_info['ConfigHealth'].iloc[0] == 'GOOD':
+                                num_controls_config_good += 1
+
                         # Get the controls test info
                         controls_test_info = self.controls_test[self.controls_test['GenericPointAddress'] == ctrl_addr]
 
-                        # Get the manual commissioning info
+                        # Get the manual commissioning info just the Action Verified test first
                         manual_commissioning_info = self.manual_commissioning[
                             (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
                             (self.manual_commissioning['CommissioningTestName'] == 'Action Verified')
                         ]
+                        # Also get the Visual Check test
+                        visual_check_info = self.manual_commissioning[
+                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
+                            (self.manual_commissioning['CommissioningTestName'] == 'Visual Check')
+                        ]
+                        # and the Control Sent test
+                        control_sent_info = self.manual_commissioning[
+                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
+                            (self.manual_commissioning['CommissioningTestName'] == 'Control Sent')
+                        ]
+                        
+                        # get the combine check for all 3 manual commissioning tests
+                        if len(visual_check_info) == 1 and len(control_sent_info) == 1 and len(manual_commissioning_info) == 1:
+                            VisualCheckisok = visual_check_info['CommissioningResult'].iloc[0] == 'OK'
+                            ControlSentisok = control_sent_info['CommissioningResult'].iloc[0] == 'OK'
+                            ActionVerifiedisok = manual_commissioning_info['CommissioningResult'].iloc[0] == 'OK'
+                            if VisualCheckisok and ControlSentisok and ActionVerifiedisok:
+                                num_controls_all_commission_ok += 1
+
+                        # get just the Action Verified test
+                        if len(manual_commissioning_info) > 0 and manual_commissioning_info['CommissioningResult'].iloc[0] == 'OK':
+                            num_controls_commission_ok += 1
 
                         # Populate the columns for this control
                         merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info['HbddeCompareStatus'].iloc[0] if len(habdde_compare_info) > 0 else None
@@ -530,6 +574,16 @@ class RTUReportGenerator:
                         merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info['AutoTestResult'].iloc[0] if len(controls_test_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commissioning_info['CommissioningResult'].iloc[0] if len(manual_commissioning_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info['TC Action'].iloc[0]) if len(poweron_info) > 0 else None
+
+                merged.at[idx, 'NumControls'] = num_controls
+                merged.at[idx, 'NumControlsMatched'] = num_controls_matched
+                merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
+                merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
+                merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
+                merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsComissioninOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
 
 
         if self.debug_dir:
@@ -574,6 +628,28 @@ class RTUReportGenerator:
 
 
         return merged_data
+    
+
+    def generate_statistics(self, merged_data: pd.DataFrame):
+        """Generate statistics for the merged data."""
+        print("Generating statistics for the merged data...")
+        # split the data by type of points in the merged data
+        SD_points = merged_data[merged_data['GenericType'] == 'SD']
+        DD_points = merged_data[merged_data['GenericType'] == 'DD']
+        A_points = merged_data[merged_data['GenericType'] == 'A']
+        DUMMY_points = merged_data[merged_data['RTUId'] == '(€€€€€€€€:)']
+
+        num_points = merged_data.shape[0]
+        num_SD_points = SD_points.shape[0]
+        num_DD_points = DD_points.shape[0]
+        num_A_points = A_points.shape[0]
+        num_DUMMY_points = DUMMY_points.shape[0]
+
+
+        
+        print(f"{num_points} points in the merged data: {num_SD_points} SD, {num_DD_points} DD, {num_A_points} A, {num_DUMMY_points} DUMMY")
+
+
 
     ''' ================================
         Generate the report
@@ -597,6 +673,8 @@ class RTUReportGenerator:
         self.merged_data = self.add_issue_report_flags(self.merged_data)
 
         self.generate_defect_report(self.merged_data)
+
+        self.generate_statistics(self.merged_data)
 
         # Get list of RTUs in the filtered data
         rtus = self.merged_data['RTU'].unique()
