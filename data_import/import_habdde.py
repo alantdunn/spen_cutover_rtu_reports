@@ -1,12 +1,12 @@
-import pandas as pd
-from data_import.utils import combine_ioa, ignore_habbde_point, convert_control_id_to_generic_control_id, get_controllable_for_taps
-from pylib3i.habdde import read_habdde_tab_into_df, read_habdde_point_tab_into_df, remove_dummy_points
 
+from data_import.utils import combine_ioa, ignore_habbde_point, convert_control_id_to_generic_control_id, get_controllable_for_taps
+from pylib3i.habdde import read_habdde_tab_into_df, read_habdde_point_tab_into_df
+import pandas as pd
 
 def import_habdde_export_point_tab(file_path: str, debug_dir: str) -> pd.DataFrame:
     """Import the HABDDE export file."""
     
-    eterra_point_export = read_habdde_point_tab_into_df(habdde_file=file_path,keep_cols=None,remove_dummy_points=False)
+    eterra_point_export = read_habdde_point_tab_into_df(habdde_file=file_path,keep_cols=None,remove_dummy_points=False, try_to_use_sql_cache=True)
     if eterra_point_export is None:
         raise ValueError("Failed to read POINT tab from eTerra export")
     eterra_point_export = clean_eterra_point_export(eterra_point_export)
@@ -19,7 +19,7 @@ def import_habdde_export_point_tab(file_path: str, debug_dir: str) -> pd.DataFra
 
 def import_habdde_export_analog_tab(file_path: str, debug_dir: str) -> pd.DataFrame:
     """Import the HABDDE export file."""
-    eterra_analog_export = read_habdde_tab_into_df(file_path, 'ANALOG')
+    eterra_analog_export = read_habdde_tab_into_df(file_path, 'ANALOG', keep_cols=None, remove_dummy_points=True, try_to_use_sql_cache=True)
     if eterra_analog_export is None:
         raise ValueError("Failed to read ANALOG tab from eTerra export")
     eterra_analog_export = clean_eterra_analog_export(eterra_analog_export)
@@ -32,7 +32,7 @@ def import_habdde_export_analog_tab(file_path: str, debug_dir: str) -> pd.DataFr
 
 def import_habdde_export_control_tab(file_path: str, debug_dir: str) -> pd.DataFrame:
     """Import the HABDDE export file."""
-    eterra_control_export = read_habdde_tab_into_df(file_path, 'CTRL')
+    eterra_control_export = read_habdde_tab_into_df(file_path, 'CTRL', keep_cols=None, remove_dummy_points=True, try_to_use_sql_cache=True)
     if eterra_control_export is None:
         raise ValueError("Failed to read CTRL tab from eTerra export")
     eterra_control_export = clean_eterra_control_export(eterra_control_export)
@@ -44,7 +44,7 @@ def import_habdde_export_control_tab(file_path: str, debug_dir: str) -> pd.DataF
 
 def import_habdde_export_setpoint_control_tab(file_path: str, debug_dir: str) -> pd.DataFrame:
     """Import the HABDDE export file."""
-    eterra_setpoint_control_export = read_habdde_tab_into_df(file_path, 'SETPNT')
+    eterra_setpoint_control_export = read_habdde_tab_into_df(file_path, 'SETPNT', keep_cols=None, remove_dummy_points=True, try_to_use_sql_cache=True)
     if eterra_setpoint_control_export is None:
         raise ValueError("Failed to read SETPNT tab from eTerra export")
     

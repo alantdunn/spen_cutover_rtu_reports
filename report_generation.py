@@ -286,6 +286,7 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
             df[col] = ''  # Add empty column if missing
             
     # Now we can safely select and concat
+
     report_df = pd.concat([report_df, df[report_fields]], ignore_index=True)
 
     # save the report dataframe to an xlsx file with formatting

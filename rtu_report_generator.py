@@ -31,21 +31,13 @@ from report_generation import (
     generate_defect_report_in_excel
 )
 from defect_reports import (
-    defect_report1,
-    defect_report2,
-    defect_report3,
-    defect_report4,
-    defect_report5,
-    defect_report6,
-    defect_report7,
-    defect_report8,
-    defect_report9,
-    defect_report10
+    generate_defect_report_by_name
 )
+from local_query.po_query import check_if_component_alias_exists_in_poweron
 import configparser
-import openpyxl
+
 from openpyxl.utils import get_column_letter
-from pylib3i.habdde import remove_dummy_points, get_dummy_points
+from pylib3i.habdde import remove_dummy_points_from_df, get_dummy_points_from_df
 
 CONFIG_FILE = 'rtu_reports.ini'
 DEFAULT_DATA_DIR = 'rtu_report_data'
@@ -190,8 +182,8 @@ class RTUReportGenerator:
     def load_eterra_export(self):
         print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
-        self.eterra_point_export = remove_dummy_points(self.eterra_full_point_export)
-        self.eterra_dummy_point_export = get_dummy_points(self.eterra_full_point_export)
+        self.eterra_point_export = remove_dummy_points_from_df(self.eterra_full_point_export)
+        self.eterra_dummy_point_export = get_dummy_points_from_df(self.eterra_full_point_export)
         if self.debug_dir:
             self.eterra_dummy_point_export.to_csv(f"{self.debug_dir}/eterra_dummy_point_export.csv", index=False)
         # Create a map of RTU addresses and protocols from the eTerra export
@@ -223,6 +215,11 @@ class RTUReportGenerator:
         no_input_controls_deduped = no_input_controls.drop_duplicates(subset=['eTerraAlias'])
         # in the no_input_dummy_points dataframe, set the RTU to the RTU value from the corresponding row in no_input_controls_deduped
         no_input_dummy_points['RTU'] = no_input_dummy_points['eTerraAlias'].map(no_input_controls_deduped.set_index('eTerraAlias')['RTU'])
+        # set the PowerOn Alias to the eTerraAlias
+        no_input_dummy_points['PowerOn Alias'] = no_input_dummy_points['eTerraAlias']
+        # get the PowerOn Alias Exists by querying
+        no_input_dummy_points['PowerOn Alias Exists'] = no_input_dummy_points['PowerOn Alias'].apply(check_if_component_alias_exists_in_poweron)
+        
 
         # Add the no_input_dummy_points to the self.eterra_point_export dataframe
         self.eterra_point_export = pd.concat([self.eterra_point_export, no_input_dummy_points], ignore_index=True)
@@ -615,18 +612,21 @@ class RTUReportGenerator:
         # HACK - remove RTU MICR4 from the data
         merged_data = merged_data[merged_data['RTU'] != 'MICR4']
 
-        merged_data = defect_report1(merged_data)
-        merged_data = defect_report2(merged_data)
-        merged_data = defect_report3(merged_data)
-        merged_data = defect_report4(merged_data)
-        merged_data = defect_report5(merged_data)
-        merged_data = defect_report6(merged_data)
-        merged_data = defect_report7(merged_data)
-        merged_data = defect_report8(merged_data)
-        merged_data = defect_report9(merged_data)
-        merged_data = defect_report10(merged_data)
+        reports_list = [
+            'Report1',
+            'Report2',
+            'Report3',
+            'Report4',
+            'Report5',
+            'Report6',
+            'Report7',
+            'Report8',
+            'Report9',
+            'Report10'
+        ]
 
-
+        for report in reports_list:
+            merged_data = generate_defect_report_by_name(merged_data, report)
         return merged_data
     
 
