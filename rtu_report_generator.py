@@ -88,7 +88,8 @@ class RTUReportGenerator:
             'controls_test': "controls_test.xlsx",
             'iccp_compare': "eterra_poweron_iccp_compare_report.xlsx",
             'compare_alarms': "Comparison_eTerra_dl11_all_po_dl11_4.xlsx",
-            'controls_db': "controls.db"
+            'controls_db': "controls.db",
+            'alarm_mismatch_manual_actions': "AlarmMismatchManualActions.xlsx"
         }
             
         if Path(config_path).exists():
@@ -138,7 +139,7 @@ class RTUReportGenerator:
         self.compare_alarms = None
         self.manual_commissioning = None
         self.merged_data = None
-        
+        self.alarm_mismatch_manual_actions = None
 
     def validate_data_files(self) -> bool:
         """Check if all required files exist in the data directory."""
@@ -335,6 +336,19 @@ class RTUReportGenerator:
             self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export_with_control_info.csv", index=False)
 
 
+    ''' ********** load_alarm_mismatch_manual_actions ********** '''
+    def load_alarm_mismatch_manual_actions(self):
+        # if the alarm_mismatch_manual_actions file exists, load it
+        if (self.data_dir / self.required_files['alarm_mismatch_manual_actions']).exists():
+            print(f"Loading alarm mismatch manual actions from {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
+            self.alarm_mismatch_manual_actions = pd.read_excel(self.data_dir / self.required_files['alarm_mismatch_manual_actions'], sheet_name='Sheet1')
+            if self.debug_dir:
+                self.alarm_mismatch_manual_actions.to_csv(f"{self.debug_dir}/alarm_mismatch_manual_actions.csv", index=False)
+        else:
+            print(f"Warning: alarm mismatch manual actions file does not exist: {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
+
+
+
     ''' ********** load_data ********** '''
     def load_data(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Load all source data into dataframes."""
@@ -360,6 +374,8 @@ class RTUReportGenerator:
             self.load_manual_commissioning_results()
 
             self.add_control_info_to_input_rows_in_eterra_export()
+
+            self.load_alarm_mismatch_manual_actions()
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
@@ -582,6 +598,26 @@ class RTUReportGenerator:
                 merged.at[idx, 'PercentControlsComissioninOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
 
+        # Merge with alarm mismatch manual actions
+        if self.alarm_mismatch_manual_actions is not None:
+
+            # rename the columns to have better names
+            self.alarm_mismatch_manual_actions.rename(columns={
+                'eTerra Alias': 'eTerraAlias',
+                'Comments on missmatch': 'AlarmMismatchComment',
+                'TemplateAlias': 'AlarmMismatchTemplateAlias'
+            }, inplace=True)
+
+            merged = pd.merge(
+                merged,
+                self.alarm_mismatch_manual_actions,
+                on=['eTerraAlias'],
+                how='left'
+            )
+
+            # set any na values to '' for the 2 columns that are added
+            merged['AlarmMismatchComment'] = merged['AlarmMismatchComment'].fillna('')
+            merged['AlarmMismatchTemplateAlias'] = merged['AlarmMismatchTemplateAlias'].fillna('')
 
         if self.debug_dir:
             print(f"Writing merged data to {self.debug_dir}/merged.csv")

@@ -178,10 +178,15 @@ REPORT_CONFIGS = {
         'combine_with': 'and'
     },
     'Report9': {
-        'name': 'TBD9',
+        'name': 'Alarm Mismatch Manual Actions',
         'debug': False,
-        'required_cols': [],
-        'criteria': [('_', 'always_false', None)],
+        'required_cols': ['AlarmMismatchComment'],
+        'criteria': [
+            ('AlarmMismatchComment', '!=', ''),
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False)
+            ],
         'combine_with': 'and'
     },
     'Report10': {

@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+from rich import print
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -252,6 +253,8 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
         {'dfCol': 'Ctrl1ConfigHealth',              'ColName': 'Ctrl1ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic'},
         {'dfCol': 'Ctrl2Name',                      'ColName': 'Ctrl2Name',                     'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Bold'},
         {'dfCol': 'Ctrl2ConfigHealth',              'ColName': 'Ctrl2ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic'},
+        {'dfCol': 'AlarmMismatchComment',            'ColName': 'AlarmMismatchComment',         'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
+        {'dfCol': 'AlarmMismatchTemplateAlias',     'ColName': 'AlarmMismatchTemplateAlias',    'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
         {'dfCol': 'Report1',            'ColName': 'Missing Analog Components',                 'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report2',            'ColName': 'Missing Digital Components',                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report3',            'ColName': 'Missing Controllable Components',           'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
@@ -260,7 +263,7 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
         {'dfCol': 'Report6',            'ColName': 'Controls not in PO but tested ok',          'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report7',            'ColName': 'Controls Not Linked',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report8',            'ColName': 'Ctrl-able eTerra Points with no Controls',  'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report9',            'ColName': 'TBD9',                                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
+        {'dfCol': 'Report9',            'ColName': 'Alarm Mismatch Manual Actions',             'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Report10',           'ColName': 'TBD10',                                     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
         {'dfCol': 'Review Status',                  'ColName': 'Review Status',                 'ColWidth': 12,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None},
         {'dfCol': 'Comments',                       'ColName': 'Comments',                      'ColWidth': 60,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None}
