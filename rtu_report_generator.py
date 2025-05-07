@@ -49,6 +49,44 @@ def load_config(config_path=CONFIG_FILE):
     config.read(config_path)
     return config
 
+# def add_control_stats_to_each_row(row):
+#     # Count how many controls are in the row - one for each of Ctrl1Name, Ctrl2Name that are not empty
+#     control_count = 0
+#     control_missing_links = 0
+#     controls_commissioned = 0
+#     for ctrlnum in range(1,3):
+#         ctrl_name = f'Ctrl{ctrlnum}Name'
+#         if row[ctrl_name] != '':
+#             control_count += 1
+#         if row[f'Ctrl{ctrlnum}ConfigHealth'] == '' or row[f'Ctrl{ctrlnum}ConfigHealth'].isna():
+#             control_missing_links += 1
+#         if row[f'Ctrl{ctrlnum}Commissioned'] == 'OK':
+#             controls_commissioned += 1
+
+#     # Add the control stats to the row
+#     row['Num Controls'] = control_count
+#     row['Num Controls Missing Links'] = control_missing_links
+#     row['Num Controls Commissioned'] = controls_commissioned
+#     row['Percent Controls Commissioned'] = (controls_commissioned / control_count) * 100 if control_count > 0 else 0
+#     return row
+
+# def add_alarm_stats_to_each_row(row):
+#     # Count how many alarms are in the row - one for each of Alarm1Name, Alarm2Name that are not empty
+#     alarm_count = 0
+#     alarms_matched = 0
+#     for alarmnum in range(0,4):
+#         alarm_name = f'Alarm{alarmnum}_eTerraMessage'
+#         if row[alarm_name] != '':
+#             alarm_count += 1
+#         if row[f'Alarm{alarmnum}_MessageMatch'] == True:
+#             alarms_matched += 1
+
+#     # Add the alarm stats to the row
+#     row['Num Alarms'] = alarm_count
+#     row['Num Alarms Matched'] = alarms_matched
+#     row['Percent Alarms Matched'] = (alarms_matched / alarm_count) * 100 if alarm_count > 0 else 0
+#     return row
+
 class RTUReportGenerator:
     def __init__(self, config_path=CONFIG_FILE, data_dir="", write_cache=False, read_cache=False):
         self.config = load_config(config_path)
@@ -500,9 +538,9 @@ class RTUReportGenerator:
                 if alarm_row[f'CompAlarmAlarmMessageMatch'] == '1':
                     num_alarms_matched += 1
                 
-        merged.at[idx, 'NumAlarms'] = num_alarms
-        merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
-        merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
+            merged.at[idx, 'NumAlarms'] = num_alarms
+            merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
+            merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
 
         print("Adding control info to merged data...")
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
@@ -595,7 +633,7 @@ class RTUReportGenerator:
                 merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
                 merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
-                merged.at[idx, 'PercentControlsComissioninOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
 
         # Merge with alarm mismatch manual actions
@@ -647,6 +685,7 @@ class RTUReportGenerator:
 
         # HACK - remove RTU MICR4 from the data
         merged_data = merged_data[merged_data['RTU'] != 'MICR4']
+        print(f"Removed RTU MICR4 from the data, now have {merged_data.shape[0]} rows")
 
         reports_list = [
             'Report1',
@@ -681,7 +720,10 @@ class RTUReportGenerator:
         num_A_points = A_points.shape[0]
         num_DUMMY_points = DUMMY_points.shape[0]
 
-
+        # # Add control stats to each row
+        # merged_data = merged_data.apply(add_control_stats_to_each_row, axis=1)
+        # # Add alarm stats to each row
+        # merged_data = merged_data.apply(add_alarm_stats_to_each_row, axis=1)
         
         print(f"{num_points} points in the merged data: {num_SD_points} SD, {num_DD_points} DD, {num_A_points} A, {num_DUMMY_points} DUMMY")
 

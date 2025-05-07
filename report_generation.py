@@ -222,8 +222,9 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
 
     # Derive the alarm status cols (for alarm numner 0..3)
     for i in range(4):
-        # df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: 'Good' if x == 'TRUE' else 'Bad' if x == 'FALSE' else 'NA')
-        df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch']
+        # df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: '1' if x == 'TRUE' else '0' if x == 'FALSE' else '')
+        df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: 1 if x == True else 0 if x == False else '')
+        #df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch']
 
     # Derive the ctrl status cols (for ctrl number 1..2)
     for i in range(1,3):

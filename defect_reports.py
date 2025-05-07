@@ -51,7 +51,10 @@ REPORT_CONFIGS = {
         'criteria_groups': [
             {
                 'criteria': [
+                    ('GenericType', 'in', ['SD', 'DD']),
                     ('Controllable', '==', '1'),
+                    ('PowerOn Alias Exists', '==', True),
+                    ('PowerOn Alias Linked to SCADA', '==', 2),
                     ('DeviceType', '!=', 'RTU'),
                     ('IGNORE_RTU', '==', False),
                     ('IGNORE_POINT', '==', False),
@@ -60,9 +63,23 @@ REPORT_CONFIGS = {
                 'combine_with': 'and'
             },
             {
-                'criteria': [
-                    ('Ctrl1Addr,Ctrl1TelecontrolAction', 'notna_pair'),
-                    ('Ctrl2Addr,Ctrl2TelecontrolAction', 'notna_pair')
+                'criteria_groups': [
+                    {
+                        'criteria': [
+                            ('Controllable', '==', '1'),
+                            ('Ctrl1Addr', 'notna_or_blank'),
+                            ('Ctrl1TelecontrolAction', 'isna_or_blank')
+                        ],
+                        'combine_with': 'and'
+                    },
+                    {
+                        'criteria': [
+                            ('Controllable', '==', '1'),
+                            ('Ctrl2Addr', 'notna_or_blank'),
+                            ('Ctrl2TelecontrolAction', 'isna_or_blank')
+                        ],
+                        'combine_with': 'and'
+                    }
                 ],
                 'combine_with': 'or'
             }
@@ -78,8 +95,11 @@ REPORT_CONFIGS = {
             ('DeviceType', '!=', 'RTU'),
             ('PowerOn Alias Exists', '==', True),
             ('PowerOn Alias Linked to SCADA', '==', 2),
+            ('CompAlarmEterraAlias', 'notna_or_blank'),
+            ('CompAlarmPOStatus', '==', 'Alarm Missing'),
             ('CompAlarmPOAlarmRef', 'isnull_or_zero'),
-            ('Alarm0_MessageMatch,Alarm1_MessageMatch,Alarm2_MessageMatch,Alarm3_MessageMatch','no_zeros'),
+            # ('Alarm0_MessageMatch,Alarm1_MessageMatch,Alarm2_MessageMatch,Alarm3_MessageMatch','no_true_or_one'),
+            ('Alarm0_POMessage', 'isna_or_blank'),
             ('ConfigHealth', '==', 'GOOD'),
             ('IGNORE_RTU', '==', False),
             ('IGNORE_POINT', '==', False),
@@ -230,7 +250,7 @@ def generate_defect_report(df: pd.DataFrame, report_name: str, report_config: di
     The column will be True for rows matching all criteria, False otherwise.
     """
     # Start with a copy of the input DataFrame to avoid modifying the original
-    result = df
+    result = df.copy()
     
     # For AND operations, we start with True and filter down
     # For OR operations, we start with False and build up
@@ -244,18 +264,15 @@ def generate_defect_report(df: pd.DataFrame, report_name: str, report_config: di
         print(f"\nDebugging {report_name}...")
         print(f"Initial value: {initial_value}")
         print(f"Report config: {report_config}")
-        print
-
+        print(f"Starting row count: {result.shape[0]} rows")
+        print("\n================================================")
+        print(f"{report_name}: Initial result {initial_value}")
+        print("================================================\n")
     
     if 'criteria_groups' in report_config:
         # Initialize report column
         result[report_name] = initial_value
 
-        if debug:   
-            print("\n================================================")
-            print(f"{report_name}: Initial result {initial_value}: {result[report_name].sum()} rows")
-            print("================================================\n")
-        
         for group_idx, group in enumerate(report_config['criteria_groups']):
             if debug:
                 print(f"\nGroup {group_idx + 1} (combine with {group.get('combine_with', 'and')})")
@@ -354,10 +371,9 @@ def generate_defect_report(df: pd.DataFrame, report_name: str, report_config: di
             prev_count = result[report_name].sum()
             
             if report_config.get('combine_with') == 'or':
-                result[report_name] |= criteria_result
+                result[report_name] = result[report_name] | criteria_result
             else:  # default to 'and'
-                result[report_name] &= criteria_result
-                
+                result[report_name] = result[report_name] & criteria_result
             if debug:
                 print(f"  Rows matching: {criteria_result.sum()}")
                 print(f"  After combining: {result[report_name].sum()} ({prev_count} -> {result[report_name].sum()})")
@@ -386,11 +402,14 @@ def evaluate_criteria(df: pd.DataFrame, cols: str, op: str, val: any) -> pd.Seri
         return result
     elif op == 'notna':
         return df[cols].notna()
+    elif op == 'notna_or_blank':
+        return df[cols].notna() & (df[cols] != '')
     elif op == 'any_notna':
         col_list = cols.split(',')
         return df[col_list].notna().any(axis=1)
     elif op == 'all_null':
         col_list = cols.split(',')
+        return df[col_list].isna().all(axis=1)
     elif op == 'isna_or_blank':
         return df[cols].isna() | (df[cols] == '')
     elif op == 'isnull_or_zero':
@@ -401,6 +420,9 @@ def evaluate_criteria(df: pd.DataFrame, cols: str, op: str, val: any) -> pd.Seri
     elif op == 'no_zeros': # all columns must be non-zero - there may be 1 or no values / nulls
         col_list = cols.split(',')
         return (df[col_list] != 0).all(axis=1)
+    elif op == 'no_true_or_one': # all columns must be false or null
+        col_list = cols.split(',')
+        return (df[col_list] != True) & (df[col_list] != 1)
     elif op == 'paired_notna':
         col_pairs = cols.split('|')
         result = pd.Series(True, index=df.index)

@@ -609,8 +609,14 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
         # Initialize the Ctrl1Addr and Ctrl1Name columns
         eterra_export.at[_, 'Ctrl1Addr'] = ''
         eterra_export.at[_, 'Ctrl1Name'] = ''
+        eterra_export.at[_, 'Ctrl1SecureBit'] = ''
+        eterra_export.at[_, 'Ctrl1SyncChannel'] = ''
+        eterra_export.at[_, 'Ctrl1IECSingleDouble'] = ''
         eterra_export.at[_, 'Ctrl2Addr'] = ''
         eterra_export.at[_, 'Ctrl2Name'] = ''
+        eterra_export.at[_, 'Ctrl2SecureBit'] = ''
+        eterra_export.at[_, 'Ctrl2SyncChannel'] = ''
+        eterra_export.at[_, 'Ctrl2IECSingleDouble'] = ''
 
         if row['Controllable'] == '1':
             # Get the control info from the eterra control and eterra setpoint control dataframes
@@ -621,10 +627,21 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
                 # Add the first control info to the eterra export dataframe
                 eterra_export.at[_, 'Ctrl1Addr'] = control_info.iloc[0]['GenericPointAddress']
                 eterra_export.at[_, 'Ctrl1Name'] = control_info.iloc[0]['ControlId']
+                # for Mk2a controls, the secure bit is in mdlparm1, the sync channel is in mdlparm2, for IEC controls, the IEC single/double is in mdlparm2
+                if control_info.iloc[0]['Protocol'] == 'MK2A':
+                    eterra_export.at[_, 'Ctrl1SecureBit'] = control_info.iloc[0]['Parm1']
+                    eterra_export.at[_, 'Ctrl1SyncChannel'] = control_info.iloc[0]['Parm2']
+                else:
+                    eterra_export.at[_, 'Ctrl1IECSingleDouble'] = control_info.iloc[0]['Parm2']
             if control_info.shape[0] > 1:
                 # Add the second control info to the eterra export dataframe
                 eterra_export.at[_, 'Ctrl2Addr'] = control_info.iloc[1]['GenericPointAddress']
                 eterra_export.at[_, 'Ctrl2Name'] = control_info.iloc[1]['ControlId']
+                if control_info.iloc[1]['Protocol'] == 'MK2A':
+                    eterra_export.at[_, 'Ctrl2SecureBit'] = control_info.iloc[1]['Parm1']
+                    eterra_export.at[_, 'Ctrl2SyncChannel'] = control_info.iloc[1]['Parm2']
+                else:
+                    eterra_export.at[_, 'Ctrl2IECSingleDouble'] = control_info.iloc[1]['Parm2']
 
         if row['GenericType'] == 'A':
             # Get the control info from the eterra setpoint control dataframe
