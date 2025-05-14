@@ -12,26 +12,27 @@ We start by importing a set of reports
 6. manual commissioning results from the controls.db sqlite database
 
 The utility will run in one of 3 modes
+
 1. for a single RTU
 2. for a single Substation (which may include more than 1 RTU)
 3. for all RTUs
 
 The source data for the selected RTU or RTUS is output into the target spreadsheet for reference and we  create a new report tab in teh following format
 
-Points
+**Points**
 Type:Input, SD/DD, SCADA Address (RTU-Card-Word-Size),eTerra Key, PowerOn Alias, ICCP Flag, Habdde Match Status, PowerOn Config Health Status, Alarm Match Status, Control Zone Status, Controllable Flag, Circuit Suggestion
 [and , if the point has controls the controls are listed below the point]
 Type:Control, DO, SCADA Address (RTU-Card-Word-ControlId),eTerra Key, PowerOn Alias, Auto Test status, Manual Test Status, Manual TestComments
 
-Controls with no feedback
+**Controls with no feedback**
 Type:Control, DO, SCADA Address (RTU-Card-Word-ControlId),eTerra Key, PowerOn Alias, Auto Test status, Manual Test Status, Manual Test Comments
 
-Analogs
+**Analogs**
 Type:Analog, A, SCADA Address (RTU-Card-Word-Size),eTerra Key, PowerOn Alias, ICCP Flag, Habdde Match Status, PowerOn Config Health Status, Analog Value Match Status
 [and , if the analog has controls the controls are listed below the analog]
 Type:Control, AO, SCADA Address (RTU-Card-Word-ControlId),eTerra Key, PowerOn Alias, Auto Test status, Manual Test Status, Manual Test Comments
 
-##logic
+## logic
 
 First we check the command line parameters are valid and setup the criteria for the report
 Check we can see all the reports we need
@@ -40,15 +41,14 @@ We then cut down the data to match our criteria
 then we create a new excel file, put the relevant source data into  tabs then create our report in a new tab at the start of the workbook.
 The report will be formatted to be clear and easy to read and filter the data as required.
 
+## INSTRUCTIONS
 
-# INSTRUCTIONS
-
-python rtu_report_generator.py --writecache
-python rtu_report_generator.py --readcache
+`python rtu_report_generator.py --writecache`
+`python rtu_report_generator.py --readcache`
 
 ## Copy exisiting comments onto newly generated sheet
 
-python utils/copy_comments_from_defect_report.py --oldfile rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx --newfile reports/defect_report_all.xlsx
+`python utils/copy_comments_from_defect_report.py --oldfile rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx --newfile reports/defect_report_all.xlsx`
 
 /Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025.xlsx
 /Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx
