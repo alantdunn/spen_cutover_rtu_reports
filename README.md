@@ -40,3 +40,15 @@ We then cut down the data to match our criteria
 then we create a new excel file, put the relevant source data into  tabs then create our report in a new tab at the start of the workbook.
 The report will be formatted to be clear and easy to read and filter the data as required.
 
+
+# INSTRUCTIONS
+
+python rtu_report_generator.py --writecache
+python rtu_report_generator.py --readcache
+
+## Copy exisiting comments onto newly generated sheet
+
+python utils/copy_comments_from_defect_report.py --oldfile rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx --newfile reports/defect_report_all.xlsx
+
+/Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025.xlsx
+/Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx

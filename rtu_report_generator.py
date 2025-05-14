@@ -697,7 +697,9 @@ class RTUReportGenerator:
             'Report7',
             'Report8',
             'Report9',
-            'Report10'
+            'Report10',
+            'Report11',
+            'ReportANY'
         ]
 
         for report in reports_list:
@@ -713,6 +715,14 @@ class RTUReportGenerator:
         DD_points = merged_data[merged_data['GenericType'] == 'DD']
         A_points = merged_data[merged_data['GenericType'] == 'A']
         DUMMY_points = merged_data[merged_data['RTUId'] == '(€€€€€€€€:)']
+
+        # The number of controls is the summation of the nnumber of controls in each row
+        Control_count = merged_data[merged_data['DeviceType'] != 'RTU']['NumControls'].sum()
+        Simple_commissioned_count = merged_data[merged_data['DeviceType'] != 'RTU']['NumControlsCommissionOk'].sum()
+        All_commissioned_count = merged_data[merged_data['DeviceType'] != 'RTU']['NumControlsAllCommissionOk'].sum()
+        print(f"Total number of controls: {Control_count}")
+        print(f"Total number of simple commissioned controls: {Simple_commissioned_count} ({(Simple_commissioned_count / Control_count * 100) if Control_count > 0 else 0.0:.1f}%)")
+        print(f"Total number of all commissioned controls: {All_commissioned_count} ({(All_commissioned_count / Control_count * 100) if Control_count > 0 else 0.0:.1f}%)")
 
         num_points = merged_data.shape[0]
         num_SD_points = SD_points.shape[0]

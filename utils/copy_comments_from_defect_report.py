@@ -78,39 +78,6 @@ def count_comments_in_df(df):
 def count_review_status_in_df(df):
     return df['Review Status'].count()
 
-def copy_values_using_df(old_df, new_df, matchmethod):
-    # we need to copy the values and fill color for the following fields, matching on the matchmethod field:
-    # Review Status
-    # Comments
-
-    # # we need to find the index of the matchmethod field in the old_df
-    # matchmethod_index = old_df.columns.get_loc(matchmethod)
-
-    # # we need to find the index of the Review Status field in the old_df
-    # review_status_index = old_df.columns.get_loc('Review Status')
-
-    # # we need to find the index of the Comments field in the old_df
-    # comments_index = old_df.columns.get_loc('Comments')
-
-    # # we need to find the index of the matchmethod field in the new_df
-    # matchmethod_index = new_df.columns.get_loc(matchmethod)
-
-    # # we need to find the index of the Review Status field in the new_df
-    # review_status_index = new_df.columns.get_loc('Review Status')
-
-    # # we need to find the index of the Comments field in the new_df
-    # comments_index = new_df.columns.get_loc('Comments')
-
-    # # we need to iterate over the old_df and copy the values to the new_df
-    # for index, row in old_df.iterrows():
-    #     # we need to find the row in the new_df that matches the matchmethod field
-    #     new_row = new_df[new_df[matchmethod] == row[matchmethod]]
-
-    #     # we need to copy the values to the new_df
-    #     new_df.at[index, 'Review Status'] = row['Review Status']
-    #     new_df.at[index, 'Comments'] = row['Comments']
-    pass
-
 def get_dict_of_values_and_fill_color(wb, matchmethod):
     # Create dictionaries to store the data in the worksheetfor fast lookup
     ws = wb[default_sheet_name]
@@ -196,10 +163,10 @@ def get_params():
     # Check if the files exist
     if not os.path.exists(args.oldfile):
         print(f"Error: The file {args.oldfile} does not exist.")
-        return
+        exit(1)
     if not os.path.exists(args.newfile):
         print(f"Error: The file {args.newfile} does not exist.")
-        return
+        exit(1)
 
     print(f"Using matchmethod: {args.matchmethod} to copy comments and review status from {args.oldfile} to {args.newfile}\n")
     return args.oldfile, args.newfile, args.matchmethod

@@ -17,11 +17,11 @@ REPORT_CONFIGS = {
         'combine_with': 'and'
     },
     'Report2': {
-        'name': 'Missing Digital Components',
+        'name': 'Missing DD Components',
         'debug': False,
         'required_cols': ['GenericType', 'PowerOn Alias Exists'],
         'criteria': [
-            ('GenericType', 'in', ['SD', 'DD']),
+            ('GenericType', 'in', ['DD']),
             ('PowerOn Alias Exists', '==', False),
             ('IGNORE_RTU', '==', False),
             ('IGNORE_POINT', '==', False),
@@ -210,11 +210,48 @@ REPORT_CONFIGS = {
         'combine_with': 'and'
     },
     'Report10': {
-        'name': 'TBD10', 
+        'name': 'RESET w/ CtrlFunc 0', 
         'debug': False,
         'required_cols': [],
-        'criteria': [('_', 'always_false', None)],
+        'criteria': [
+            ('Ctrl1Name', '==', 'RESET'),
+            ('Ctrl1Addr', 'endswith', '-0 C]'),
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False)
+            ],
         'combine_with': 'and'
+    },
+    'Report11': {
+        'name': 'SWDD with LAMP symbol', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('PointId', '==', 'SWDD'),
+            ('Symbol', '==', 'scottish_power/SPT_master_lamp_indication'),
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False)
+            ],
+        'combine_with': 'and'
+    },
+    'ReportANY': {
+        'name': 'Any Defect', 
+        'debug': False,
+        'criteria': [
+            ('Report1', '==', True),
+            ('Report2', '==', True),
+            ('Report3', '==', True),
+            ('Report4', '==', True),
+            ('Report5', '==', True),
+            ('Report6', '==', True),
+            ('Report7', '==', True),
+            ('Report8', '==', True),
+            ('Report9', '==', True),
+            ('Report10', '==', True),
+            ('Report11', '==', True),
+            ],
+        'combine_with': 'or'
     }
 }
 
@@ -393,6 +430,8 @@ def evaluate_criteria(df: pd.DataFrame, cols: str, op: str, val: any) -> pd.Seri
         return (df[cols] != val)
     elif op == 'in':
         return df[cols].isin(val)
+    elif op == 'endswith':
+        return df[cols].str.endswith(val)
     elif op == 'notna_pair':
         col_pairs = cols.split('|')
         result = pd.Series(True, index=df.index)
