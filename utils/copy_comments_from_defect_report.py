@@ -168,6 +168,7 @@ def get_params():
         print(f"Error: The file {args.newfile} does not exist.")
         exit(1)
 
+    print("")
     print(f"Using matchmethod: {args.matchmethod} to copy comments and review status from {args.oldfile} to {args.newfile}\n")
     return args.oldfile, args.newfile, args.matchmethod
 
