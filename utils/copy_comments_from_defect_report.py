@@ -44,11 +44,11 @@ def read_report_df_and_wb(filename, sheet_name=default_sheet_name):
     # Review Status
     # Comments
 
-    print(f"Reading {filename} into a dataframe...")
+    print(f" :mag_right: Reading {filename} into a dataframe...")
     df= pd.read_excel(filename)
     #df = df[['GenericPointAddress', 'eTerraAlias', 'Review Status', 'Comments']]
 
-    print(f"Reading {filename} into a workbook...")
+    print(f" :mag_right: Reading {filename} into a workbook...")
     # Load workbook and sheet using openpyxl
     wb = load_workbook(filename, data_only=True)
 

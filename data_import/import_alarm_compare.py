@@ -50,6 +50,11 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
     # | 314                     | 
     # | SC1E                    | 
     # | SC2E                    | 
+    # | TemplateAlias           | 
+    # | TemplateName            | 
+    # | TemplateType            | 
+    # | State Index             | 
+    
 
     df.rename(columns={
         'RTU_Name': 'CompAlarmRTU',
@@ -88,7 +93,11 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
         'new_match': 'CompAlarmNewMatch',
         'MatchScore': 'CompAlarmMatchScore',
         'AlarmMessageMatch': 'CompAlarmAlarmMessageMatch',
-        'AlarmZoneMatch': 'CompAlarmAlarmZoneMatch'
+        'AlarmZoneMatch': 'CompAlarmAlarmZoneMatch',
+        'TemplateAlias': 'CompAlarmTemplateAlias',
+        'TemplateName': 'CompAlarmTemplateName',
+        'TemplateType': 'CompAlarmTemplateType',
+        'StateIndex': 'CompAlarmStateIndex'
     }, inplace=True)
 
     # Only return the columns we need
@@ -130,7 +139,11 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
         'CompAlarmNewMatch',
         'CompAlarmMatchScore',
         'CompAlarmAlarmMessageMatch',
-        'CompAlarmAlarmZoneMatch'
+        'CompAlarmAlarmZoneMatch',
+        'CompAlarmTemplateAlias',
+        'CompAlarmTemplateName',
+        'CompAlarmTemplateType',
+        'CompAlarmStateIndex'
     ]
 
     df = df[columns_to_keep]

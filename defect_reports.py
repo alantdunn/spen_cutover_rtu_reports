@@ -235,6 +235,46 @@ REPORT_CONFIGS = {
             ],
         'combine_with': 'and'
     },
+        'Report12': {
+        'name': 'Missing from DLPoint', 
+        'debug': False,
+        'required_cols': [],
+            'criteria': [
+                ('DeviceType', '!=', 'RTU'),
+                ('IGNORE_RTU', '==', False),
+                ('IGNORE_POINT', '==', False),
+                ('OLD_DATA', '==', False),
+                ('ICCP->PO', '==', 'X'),
+                ('ICCP_ALIAS', 'isna_or_blank')
+            ],
+            'combine_with': 'and'
+    },
+        'Report13': {
+        'name': 'DD symbol should be SD', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('GenericType', '==', 'DD'),
+            ('CompAlarmTemplateType', '==', 'SD')
+            ],
+        'combine_with': 'and'
+    },
+        'Report14': {
+        'name': 'SD symbol should be DD', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('GenericType', '==', 'SD'),
+            ('CompAlarmTemplateType', '==', 'DD')
+            ],
+        'combine_with': 'and'
+    },
     'ReportANY': {
         'name': 'Any Defect', 
         'debug': False,
@@ -249,7 +289,8 @@ REPORT_CONFIGS = {
             ('Report8', '==', True),
             ('Report9', '==', True),
             ('Report10', '==', True),
-            ('Report11', '==', True),
+            ('Report13', '==', True),
+            ('Report14', '==', True),
             ],
         'combine_with': 'or'
     }

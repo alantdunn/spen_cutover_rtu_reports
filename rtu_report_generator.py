@@ -37,7 +37,7 @@ from local_query.po_query import check_if_component_alias_exists_in_poweron
 import configparser
 
 from openpyxl.utils import get_column_letter
-from pylib3i.habdde import remove_dummy_points_from_df, get_dummy_points_from_df
+from pylib3i.habdde import remove_dummy_points_from_df, get_dummy_points_from_df, read_habdde_card_tab_into_df
 
 CONFIG_FILE = 'rtu_reports.ini'
 DEFAULT_DATA_DIR = 'rtu_report_data'
@@ -170,6 +170,7 @@ class RTUReportGenerator:
         self.eterra_setpoint_control_export = None
         self.eterra_rtu_map = None
         self.eterra_export = None
+        self.eterra_card_tab = None
         self.habdde_compare = None
         self.all_rtus = None
         self.controls_test = None
@@ -206,7 +207,7 @@ class RTUReportGenerator:
     def read_data_cache(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Read the data cache from the database."""
         # read the merged data from the database
-        print(f"Reading data cache from {self.data_cache_db}")
+        print(f" :mag_right: Reading data cache from {self.data_cache_db}")
         conn = sqlite3.connect(self.data_cache_db)
         self.merged_data = pd.read_sql_query('SELECT * FROM merged_data', conn)
         conn.close()
@@ -219,7 +220,7 @@ class RTUReportGenerator:
         print(f"Filtered data to {self.merged_data.shape[0]} rows")
 
     def load_eterra_export(self):
-        print(f"Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_right: Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
         self.eterra_point_export = remove_dummy_points_from_df(self.eterra_full_point_export)
         self.eterra_dummy_point_export = get_dummy_points_from_df(self.eterra_full_point_export)
@@ -228,15 +229,15 @@ class RTUReportGenerator:
         # Create a map of RTU addresses and protocols from the eTerra export
         self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
 
-        print(f"Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_right: Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_analog_export = import_habdde_export_analog_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
         
-        print(f"Loading control export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_right: Loading control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
     def add_no_input_controls(self):
         # Look for any controls that are not in the point export, then look for these as dummy points
-        print(f"Looking for controls that are not in the point export ... ", end="")
+        print(f" :arrow_right: Looking for controls that are not in the point export ... ", end="")
         no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
         # remove any rows that have PointId = "TAP" - these are dealt with through the TAP/TPC connection in the control load
         no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
@@ -244,7 +245,7 @@ class RTUReportGenerator:
         if self.debug_dir:
             no_input_controls.to_csv(f"{self.debug_dir}/no_input_controls.csv", index=False)
 
-        print(f"Looking for dummy points for no input controls ... ", end="")
+        print(f" :arrow_right: Looking for dummy points for no input controls ... ", end="")
         no_input_dummy_points = self.eterra_dummy_point_export[self.eterra_dummy_point_export['eTerraAlias'].isin(no_input_controls['eTerraAlias'])]
         print(f"found {no_input_dummy_points.shape[0]} dummy points.")
         if self.debug_dir:
@@ -280,9 +281,12 @@ class RTUReportGenerator:
         #     no_input_controls_duplicates.to_csv(f"{self.debug_dir}/no_input_controls_duplicates.csv", index=False)
 
     def load_eterra_setpoint_control_export(self):
-        print(f"Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_right: Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
+    def load_eterra_card_tab(self):
+        print(f" :arrow_right: Loading card tab from {self.data_dir / self.required_files['eterra_export']}")
+        self.eterra_card_tab = read_habdde_card_tab_into_df(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
     def create_base_eterra_export_by_combining_point_and_analog_exports(self):
         # Get just the common columns from point and analog and concatenate them together, sort by GenericPointAddress
@@ -326,7 +330,7 @@ class RTUReportGenerator:
 
     ''' ********** load_habdde_compare ********** '''
     def load_habdde_compare(self):
-        print(f"Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
+        print(f" :arrow_right: Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
         self.habdde_compare = pd.read_csv(self.data_dir / self.required_files['habdde_compare'], low_memory=False)
         self.habdde_compare = clean_habdde_compare(self.habdde_compare)
         if self.debug_dir:
@@ -334,7 +338,7 @@ class RTUReportGenerator:
 
     ''' ********** load_poweron_data ********** '''
     def load_poweron_data(self):
-        print(f"Loading poweron data from {self.data_dir / self.required_files['all_rtus']}")
+        print(f" :arrow_right: Loading poweron data from {self.data_dir / self.required_files['all_rtus']}")
         self.all_rtus = pd.read_csv(self.data_dir / self.required_files['all_rtus'], low_memory=False)
         self.all_rtus = clean_all_rtus(self.all_rtus)
         if self.debug_dir:
@@ -342,7 +346,7 @@ class RTUReportGenerator:
 
     ''' ********** load_controls_auto_test_results ********** '''
     def load_controls_auto_test_results(self):
-        print(f"Loading controls auto test results from {self.data_dir / self.required_files['controls_test']}")
+        print(f" :arrow_right: Loading controls auto test results from {self.data_dir / self.required_files['controls_test']}")
         self.controls_test = pd.read_csv(self.data_dir / self.required_files['controls_test'])
         self.controls_test = clean_controls_test(self.controls_test, self.eterra_rtu_map)
         if self.debug_dir:
@@ -350,7 +354,7 @@ class RTUReportGenerator:
 
     ''' ********** load_compare_alarms ********** '''
     def load_compare_alarms(self):
-        print(f"Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
+        print(f" :arrow_right: Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
         self.compare_alarms = pd.read_excel(self.data_dir / self.required_files['compare_alarms'], sheet_name='Event Detail')
         self.compare_alarms = clean_compare_alarms(self.compare_alarms)
         if self.debug_dir:
@@ -358,7 +362,7 @@ class RTUReportGenerator:
 
     ''' ********** load_manual_commissioning_results ********** '''
     def load_manual_commissioning_results(self):
-        print(f"Loading manual commissioning results from {self.data_dir / self.required_files['controls_db']}")
+        print(f" :arrow_right: Loading manual commissioning results from {self.data_dir / self.required_files['controls_db']}")
         conn = sqlite3.connect(self.data_dir / self.required_files['controls_db'])
         self.manual_commissioning = pd.read_sql_query("SELECT * FROM test_results", conn)
         conn.close()
@@ -378,7 +382,7 @@ class RTUReportGenerator:
     def load_alarm_mismatch_manual_actions(self):
         # if the alarm_mismatch_manual_actions file exists, load it
         if (self.data_dir / self.required_files['alarm_mismatch_manual_actions']).exists():
-            print(f"Loading alarm mismatch manual actions from {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
+            print(f" :arrow_right: Loading alarm mismatch manual actions from {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
             self.alarm_mismatch_manual_actions = pd.read_excel(self.data_dir / self.required_files['alarm_mismatch_manual_actions'], sheet_name='Sheet1')
             if self.debug_dir:
                 self.alarm_mismatch_manual_actions.to_csv(f"{self.debug_dir}/alarm_mismatch_manual_actions.csv", index=False)
@@ -484,7 +488,10 @@ class RTUReportGenerator:
             'CompAlarmPOAlarmZone', 
             'CompAlarmPOAlarmRef',
             'CompAlarmPOStatus',
-            'CompAlarmAlarmZoneMatch'
+            'CompAlarmAlarmZoneMatch',
+            'CompAlarmTemplateAlias',
+            'CompAlarmTemplateType',
+            'CompAlarmStateIndex'
         ]
         
         # Only include columns that exist in the merged dataframe
@@ -494,8 +501,13 @@ class RTUReportGenerator:
             print("Warning: No matching columns found for point_related_columns")
             point_related_df = self.compare_alarms.copy()
         else:
-            point_related_df = self.compare_alarms[point_related_columns]
-            point_related_df = point_related_df.drop_duplicates()
+            # Sort by CompAlarmPOStatus so 'Matched' comes first
+            point_related_df = self.compare_alarms[point_related_columns].sort_values(
+                by=['CompAlarmEterraAlias', 'CompAlarmPOStatus'],
+                ascending=[True, False]  # False puts 'Matched' first
+            )
+            # Keep first row for each eTerraAlias (which will be 'Matched' if exists)
+            point_related_df = point_related_df.groupby('CompAlarmEterraAlias').first().reset_index()
 
         #1.b) merge the point related df with the compare alarms df
         merged = pd.merge(
@@ -505,10 +517,22 @@ class RTUReportGenerator:
             right_on=['CompAlarmEterraAlias'],
             how='left'
         )
+        
+        # Debug the merge - we are getting duplicates in the merged df
+        print(f"Merged df has {merged.shape[0]} rows")
+        number_of_duplicates = merged.duplicated().sum()
+        print(f"Number of duplicates: {number_of_duplicates}")
+
 
         #1.c de-duplicate the merged df
         print(f"De-duplicating merged data...")
         merged = merged.drop_duplicates()
+
+        print(f"After de-duplication, merged df has {merged.shape[0]} rows")
+        #if we had duplciates, exit
+        if number_of_duplicates > 0:
+            print(f"Duplicates were found, exiting")
+            sys.exit(1)
 
         print(f"Initializing alarm related columns...")
         #1.d) add the alarm related columns into Alarm<value>_eTerraMessage and Alarm<value>_POMessage, and Alarm<value>_MessageMatch
@@ -699,6 +723,9 @@ class RTUReportGenerator:
             'Report9',
             'Report10',
             'Report11',
+            'Report12',
+            'Report13',
+            'Report14',
             'ReportANY'
         ]
 
@@ -706,7 +733,63 @@ class RTUReportGenerator:
             merged_data = generate_defect_report_by_name(merged_data, report)
         return merged_data
     
+    def generate_mk2a_card_report(self):
+        """Generate the MK2A card report."""
+        # First get a list of the unique RTU Name/Card pairs for all MK2A cards
+        mk2a_cards = self.merged_data[self.merged_data['Protocol'] == 'MK2A'].copy()
+        mk2a_cards = mk2a_cards[['RTU', 'Card']].drop_duplicates()
+        # print(f"Found {mk2a_cards.shape[0]} unique RTU/Card pairs for MK2A cards")
 
+        # Now check that every RTU/Card pair has at least one corresponding record in the merged_data dataframe, PO section, that is a good config health
+        # print("="*80)
+        # print(f"Checking {mk2a_cards.shape[0]} RTU/Card pairs for MK2A cards using point data")
+        # for index, row in mk2a_cards.iterrows():
+        #     rtu = row['RTU']
+        #     card = row['Card']
+            
+        #     if card in ['251', '252', '253', '254' '119', '']:
+        #         # ignore these cards as they are internal to the RTU
+        #         continue
+        #     valid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] == 'GOOD')]
+
+        #     if valid_rows_for_card.shape[0] == 0:
+        #         print(f"RTU/Card pair {rtu}/{card} has no matching record in PowerOn with a good config health")
+
+        # print("="*80)
+        # print("")
+
+        print("="*80)
+        print(f"Checking {mk2a_cards.shape[0]} RTU/Card pairs for MK2A cards using card tab")
+        # Load the eTerra card tab
+        result_list = []
+        self.eterra_card_tab = read_habdde_card_tab_into_df(self.data_dir / self.required_files['eterra_export'])
+        # go through each card in the eTerra card tab, and check if a corresponding record exists in the merged_data dataframe, PO section, that is a good config health
+        for index, row in self.eterra_card_tab.iterrows():
+            rtu = row['rtu']
+            # if rtu != 'CURR':
+            #     continue
+            protocol = row['protocol']
+            if protocol != 'MK2A':
+                continue
+            card_type = row['CASDU']
+            if card_type != '1':
+                continue
+            card = row['card']
+            if card in ['250', '251', '252', '253', '254', '119', '']:
+                continue
+            valid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] == 'GOOD')]
+            if valid_rows_for_card.shape[0] == 0:
+                print(f"RTU/Card pair {rtu}/{card} has no matching record in PowerOn with a good config health")
+                result_list.append(f"{rtu},{card}")
+        print("="*80)
+        print("")
+
+        # output the result list to a csv file, with header RTU, Card
+        with open(self.output_dir / 'mk2a_missing_card_report.csv', 'w') as f:
+            f.write('RTU,Card\n')
+            for result in result_list:
+                f.write(f"{result}\n")
+        
     def generate_statistics(self, merged_data: pd.DataFrame):
         """Generate statistics for the merged data."""
         print("Generating statistics for the merged data...")
@@ -761,6 +844,8 @@ class RTUReportGenerator:
         self.merged_data = self.add_issue_report_flags(self.merged_data)
 
         self.generate_defect_report(self.merged_data)
+
+        # self.generate_mk2a_card_report()
 
         self.generate_statistics(self.merged_data)
 
