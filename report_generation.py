@@ -224,7 +224,7 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
     print("Generating Defect Report in Excel")
     print("="*80)
 
-    # Derive the alarm status cols (for alarm numner 0..3)
+    # Derive the alarm status cols (for alarm number 0..3)
     for i in range(4):
         # df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: '1' if x == 'TRUE' else '0' if x == 'FALSE' else '')
         df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: 1 if x == True else 0 if x == False else '')
@@ -233,64 +233,72 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
     # Derive the ctrl status cols (for ctrl number 1..2)
     for i in range(1,3):
         df[f'Ctrl{i}'] = df.apply(lambda row: 1 if row[f'Ctrl{i}TestResult'] == 'OK' else 0 if row[f'Ctrl{i}TestResult'] == 'Fail' else '', axis=1)
+        df[f'Ctrl{i}V'] = df.apply(lambda row: 1 if row[f'Ctrl{i}VisualCheckResult'] == 'OK' else 0 if row[f'Ctrl{i}VisualCheckResult'] == 'Fail' else '', axis=1)
+        df[f'Ctrl{i}C'] = df.apply(lambda row: 1 if row[f'Ctrl{i}ControlSentResult'] == 'OK' else 0 if row[f'Ctrl{i}ControlSentResult'] == 'Fail' else '', axis=1)
 
     # Sort out a few bespoke columns
-    # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
-    df['Type'] = df.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
-    # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
-    df['Ignore'] = df.apply(lambda row: True if (row['IGNORE_RTU'] == True or row['IGNORE_POINT'] == True or row['OLD_DATA'] == True ) else False, axis=1)
-    # We want to add a new column 'RTUComms' to the df that is True if the DeviceType is 'RTU and the eTerraAlias does not contain 'LDC'
-    df['RTUComms'] = df.apply(lambda row: True if row['DeviceType'] == 'RTU' and 'LDC' not in row['eTerraAlias'] else False, axis=1)
+    # # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
+    # df['Type'] = df.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
+    # # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
+    # df['Ignore'] = df.apply(lambda row: True if (row['IGNORE_RTU'] == True or row['IGNORE_POINT'] == True or row['OLD_DATA'] == True ) else False, axis=1)
+    # # We want to add a new column 'RTUComms' to the df that is True if the DeviceType is 'RTU and the eTerraAlias does not contain 'LDC'
+    # df['RTUComms'] = df.apply(lambda row: True if row['DeviceType'] == 'RTU' and 'LDC' not in row['eTerraAlias'] else False, axis=1)
 
     report_columns = [
-        {'dfCol': 'GenericPointAddress',            'ColName': 'GenericPointAddress',           'ColWidth': 25,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'Type',                           'ColName': 'Type',                          'ColWidth': 3,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'RTU',                            'ColName': 'RTU',                           'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None}, 
-        {'dfCol': 'Sub',                            'ColName': 'Sub',                           'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'Ignore',                         'ColName': 'Ignore',                        'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'eTerraKey',                      'ColName': 'eTerraKey',                     'ColWidth': 17,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'eTerraAlias',                    'ColName': 'eTerraAlias',                   'ColWidth': 35,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'GridIncomer',                    'ColName': 'GridIncomer',                   'ColWidth': 10,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'ZeroOne'},
-        {'dfCol': 'RTUComms',                       'ColName': 'RTUComms',                      'ColWidth': 7,     'Align': 'center',  'ColFill': None,         'ConditionalFormatting': None},
-        {'dfCol': 'PointId',                        'ColName': 'PointId',                       'ColWidth': 5,     'Align': 'center',  'ColFill': None,         'ConditionalFormatting': 'None'},
-        {'dfCol': 'ICCP->PO',                       'ColName': 'ICCP->PO',                      'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'XBlank'},
-        {'dfCol': 'ICCP_ALIAS',                     'ColName': 'ICCP_ALIAS',                    'ColWidth': 27,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'PowerOn Alias',                  'ColName': 'PowerOn Alias',                 'ColWidth': 35,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'CompAlarmTemplateAlias',         'ColName': 'Template'                  ,    'ColWidth': 30,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None'},
-        {'dfCol': 'PowerOn Alias Exists',           'ColName': 'PowerOn Alias Exists',          'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'PowerOn Alias Linked to SCADA',  'ColName': 'PowerOn Alias Linked to SCADA', 'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'ZeroTwo'},
-        {'dfCol': 'CompAlarmTemplateType',          'ColName': 'TemplateType',                  'ColWidth': 3,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None'},
-        {'dfCol': 'CompAlarmStateIndex',            'ColName': 'StateIndex',                    'ColWidth': 3,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None'},
-        {'dfCol': 'Alarm0',                         'ColName': 'Alarm0',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Alarm1',                         'ColName': 'Alarm1',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Alarm2',                         'ColName': 'Alarm2',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Alarm3',                         'ColName': 'Alarm3',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Controllable',                   'ColName': 'Controllable',                  'ColWidth': 10,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'Ctrl1',                          'ColName': 'Ctrl1',                         'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Ctrl2',                          'ColName': 'Ctrl2',                         'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA'},
-        {'dfCol': 'Ctrl1Name',                      'ColName': 'Ctrl1Name',                     'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Bold'},
-        {'dfCol': 'Ctrl1ConfigHealth',              'ColName': 'Ctrl1ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic'},
-        {'dfCol': 'Ctrl2Name',                      'ColName': 'Ctrl2Name',                     'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Bold'},
-        {'dfCol': 'Ctrl2ConfigHealth',              'ColName': 'Ctrl2ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic'},
-        {'dfCol': 'AlarmMismatchComment',            'ColName': 'AlarmMismatchComment',         'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'AlarmMismatchTemplateAlias',     'ColName': 'AlarmMismatchTemplateAlias',    'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None},
-        {'dfCol': 'Report1',            'ColName': 'Missing Analog Components',                 'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report2',            'ColName': 'Missing Digital Components',                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report3',            'ColName': 'Missing Controllable Components',           'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report4',            'ColName': 'Components Missing Telecontrol Actions',    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report5',            'ColName': 'Components Missing Alarm Reference',        'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report6',            'ColName': 'Controls not in PO but tested ok',          'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report7',            'ColName': 'Controls Not Linked',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report8',            'ColName': 'Ctrl-able eTerra Points with no Controls',  'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report9',            'ColName': 'Alarm Mismatch Manual Actions',             'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report10',           'ColName': 'RESET w/ CtrlFunc 0',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report11',           'ColName': 'SWDD with LAMP symbol',                     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report12',           'ColName': 'Missing from DLPoint',                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report13',           'ColName': 'DD symbol should be SD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Report14',           'ColName': 'SD symbol should be DD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'ReportANY',          'ColName': 'Any Defect',                                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse'},
-        {'dfCol': 'Review Status',                  'ColName': 'Review Status',                 'ColWidth': 12,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None},
-        {'dfCol': 'Comments',                       'ColName': 'Comments',                      'ColWidth': 60,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None}
+        {'dfCol': 'GenericPointAddress',            'ColName': 'GenericPointAddress',           'ColWidth': 25,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'Type',                           'ColName': 'Type',                          'ColWidth': 3,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'RTU',                            'ColName': 'RTU',                           'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False}, 
+        {'dfCol': 'Sub',                            'ColName': 'Sub',                           'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'Ignore',                         'ColName': 'Ignore',                        'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'eTerraKey',                      'ColName': 'eTerraKey',                     'ColWidth': 17,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'eTerraAlias',                    'ColName': 'eTerraAlias',                   'ColWidth': 35,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'GridIncomer',                    'ColName': 'GridIncomer',                   'ColWidth': 10,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'ZeroOne',      'Hidden': False},
+        {'dfCol': 'RTUComms',                       'ColName': 'RTUComms',                      'ColWidth': 7,     'Align': 'center',  'ColFill': None,         'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'PointId',                        'ColName': 'PointId',                       'ColWidth': 5,     'Align': 'center',  'ColFill': None,         'ConditionalFormatting': 'None',      'Hidden': False},
+        {'dfCol': 'ICCP->PO',                       'ColName': 'ICCP->PO',                      'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'XBlank',      'Hidden': False},
+        {'dfCol': 'ICCP_ALIAS',                     'ColName': 'ICCP_ALIAS',                    'ColWidth': 27,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'PowerOn Alias',                  'ColName': 'PowerOn Alias',                 'ColWidth': 35,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'CompAlarmTemplateAlias',         'ColName': 'Template'                  ,    'ColWidth': 30,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None',      'Hidden': False},
+        {'dfCol': 'PowerOn Alias Exists',           'ColName': 'PowerOn Alias Exists',          'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'PowerOn Alias Linked to SCADA',  'ColName': 'PowerOn Alias Linked to SCADA', 'ColWidth': 7,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'ZeroTwo',      'Hidden': False},
+        {'dfCol': 'CompAlarmTemplateType',          'ColName': 'TemplateType',                  'ColWidth': 3,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None',      'Hidden': False},
+        {'dfCol': 'CompAlarmStateIndex',            'ColName': 'StateIndex',                    'ColWidth': 3,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'None',      'Hidden': False},
+        {'dfCol': 'Alarm0',                         'ColName': 'Alarm0',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Alarm1',                         'ColName': 'Alarm1',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Alarm2',                         'ColName': 'Alarm2',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Alarm3',                         'ColName': 'Alarm3',                        'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Controllable',                   'ColName': 'Controllable',                  'ColWidth': 10,     'Align': 'center',  'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'Ctrl1',                          'ColName': 'Ctrl1',                         'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Ctrl1V',                         'ColName': 'Ctrl1V',                        'ColWidth': 1,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': True},
+        {'dfCol': 'Ctrl1C',                         'ColName': 'Ctrl1C',                        'ColWidth': 1,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': True},
+        {'dfCol': 'Ctrl2',                          'ColName': 'Ctrl2',                         'ColWidth': 4,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': False},
+        {'dfCol': 'Ctrl2V',                         'ColName': 'Ctrl2V',                        'ColWidth': 1,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': True},
+        {'dfCol': 'Ctrl2C',                         'ColName': 'Ctrl2C',                        'ColWidth': 1,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'GoodBadNA',      'Hidden': True},
+        {'dfCol': 'Ctrl1Name',                      'ColName': 'Ctrl1Name',                     'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Bold',      'Hidden': False},
+        {'dfCol': 'Ctrl1Comments',                  'ColName': 'Ctrl1Comments',                 'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic',      'Hidden': True},
+        {'dfCol': 'Ctrl1ConfigHealth',              'ColName': 'Ctrl1ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic',      'Hidden': False},
+        {'dfCol': 'Ctrl2Name',                      'ColName': 'Ctrl2Name',                     'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Bold',      'Hidden': False},
+        {'dfCol': 'Ctrl2Comments',                  'ColName': 'Ctrl2Comments',                 'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic',      'Hidden': True},
+        {'dfCol': 'Ctrl2ConfigHealth',              'ColName': 'Ctrl2ConfigHealth',             'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': 'Italic',      'Hidden': False},
+        {'dfCol': 'AlarmMismatchComment',           'ColName': 'AlarmMismatchComment',          'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'AlarmMismatchTemplateAlias',     'ColName': 'AlarmMismatchTemplateAlias',    'ColWidth': 10,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'Report1',            'ColName': 'Missing Analog Components',                 'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report2',            'ColName': 'Missing Digital Components',                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report3',            'ColName': 'Missing Controllable Components',           'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report4',            'ColName': 'Components Missing Telecontrol Actions',    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report5',            'ColName': 'Components Missing Alarm Reference',        'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report6',            'ColName': 'Controls not in PO but tested ok',          'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report7',            'ColName': 'Controls Not Linked',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report8',            'ColName': 'Ctrl-able eTerra Points with no Controls',  'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report9',            'ColName': 'Alarm Mismatch Manual Actions',             'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report10',           'ColName': 'RESET w/ CtrlFunc 0',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report11',           'ColName': 'SWDD with LAMP symbol',                     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report12',           'ColName': 'Missing from DLPoint',                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report13',           'ColName': 'DD symbol should be SD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report14',           'ColName': 'SD symbol should be DD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'ReportANY',          'ColName': 'Any Defect',                                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Review Status',                  'ColName': 'Review Status',                 'ColWidth': 12,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None,      'Hidden': False},
+        {'dfCol': 'Comments',                       'ColName': 'Comments',                      'ColWidth': 60,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None,      'Hidden': False}
     ]
     
     for idx, col in enumerate(report_columns, 1):
@@ -358,6 +366,11 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
                                                     bottom=openpyxl.styles.Side(style='thin', color='000000'))
 
     apply_conditional_formatting(worksheet, report_columns)
+
+    # Hide the columns that are hidden
+    for idx, col in enumerate(report_columns, 1):
+        if col['Hidden']:
+            worksheet.column_dimensions[get_column_letter(idx)].hidden = True
 
     writer.close()
     

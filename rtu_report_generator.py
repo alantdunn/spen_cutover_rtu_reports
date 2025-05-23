@@ -33,7 +33,7 @@ from report_generation import (
 from defect_reports import (
     generate_defect_report_by_name
 )
-from local_query.po_query import check_if_component_alias_exists_in_poweron
+from local_query.po_query import check_if_component_alias_exists_in_poweron, checkIfComponentAliasInScanPointComponents
 import configparser
 
 from openpyxl.utils import get_column_letter
@@ -396,27 +396,16 @@ class RTUReportGenerator:
         """Load all source data into dataframes."""
         try:
             self.load_eterra_export() # creates eterra_full_point_export, eterra_point_export, eterra_dummy_point_export, eterra_analog_export, eterra_control_export
-
             self.load_eterra_setpoint_control_export() # creates eterra_setpoint_control_export
-
             self.add_no_input_controls() # creates no_input_controls, no_input_dummy_points, no_input_controls_not_dummy_points
-
             self.create_base_eterra_export_by_combining_point_and_analog_exports() # creates eterra_export - a dataframe with all the point and analog data and only the common columns
-
             self.filter_eterra_export_by_rtu_name_or_substation(rtu_name, substation) # creates eterra_export_filtered - a filtered version of eterra_export that is filtered by rtu_name or substation
-
             self.load_habdde_compare()
-
             self.load_poweron_data()
-
             self.load_controls_auto_test_results()
-
             self.load_compare_alarms()
-
             self.load_manual_commissioning_results()
-
             self.add_control_info_to_input_rows_in_eterra_export()
-
             self.load_alarm_mismatch_manual_actions()
 
         except Exception as e:
@@ -429,6 +418,65 @@ class RTUReportGenerator:
     def merge_data(self) -> pd.DataFrame:
         """Merge all data sources into a single dataframe."""
 
+        merged = self.merge_eterra_export_with_habdde_compare()
+        merged = self.merge_all_rtus_data(merged)
+        merged = self.merge_iccp_compare_data(merged)
+        merged = self.merge_compare_alarms_data(merged)
+        merged = self.merge_control_data(merged)
+        merged = self.merge_alarm_mismatch_manual_actions(merged)
+        merged = self.add_derived_columns(merged)
+
+        if self.debug_dir:
+            print(f" :arrow_right: Writing merged data to {self.debug_dir}/merged.csv")
+            merged.to_csv(f"{self.debug_dir}/merged.csv", index=False)
+        
+        return merged
+    
+    #####################################################################
+    #                                                                    
+    #                      Add Derived Columns                           
+    #                                                                    
+    #  - Adds Type column that flags dummy rows as 'DUMMY'               
+    #  - Creates Ignore column based on IGNORE flags and OLD_DATA        
+    #  - Adds RTUComms column for RTU devices without 'LDC'              
+    #                                                                    
+    #####################################################################
+    def add_derived_columns(self, merged: pd.DataFrame) -> pd.DataFrame:
+        # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
+        merged['Type'] = merged.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
+        # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
+        merged['Ignore'] = merged.apply(lambda row: True if (row['IGNORE_RTU'] == True or row['IGNORE_POINT'] == True or row['OLD_DATA'] == True ) else False, axis=1)
+        # We want to add a new column 'RTUComms' to the df that is True if the DeviceType is 'RTU and the eTerraAlias does not contain 'LDC'
+        merged['RTUComms'] = merged.apply(lambda row: True if row['DeviceType'] == 'RTU' and 'LDC' not in row['eTerraAlias'] else False, axis=1)
+
+        # Create 2 new columsn eTerraAliasExistsInPO, eTerraAliasLinkedToSCADA
+        # For every value in the eTerraAlias column, set the value of these new fields: 1/0 if that comp exists in PowerOn, 1/0 if that comp is scada linked in PowerOn
+        # we will use 2 functions to do this
+        def get_poweron_alias_exists(alias):
+            if alias is None or alias == "":
+                return 0
+            exists = check_if_component_alias_exists_in_poweron(alias)
+            return 1 if exists is not None and exists else 0
+        
+        def get_poweron_alias_linked_to_scada(alias):
+            if alias is None or alias == "":
+                return 0
+            linked = checkIfComponentAliasInScanPointComponents(alias)
+            return  1 if linked is not None and linked else 0
+        
+        # 1. get_poweron_alias_exists(eTerraAlias) - returns 1/0 if the eTerraAlias exists in PowerOn
+        # 2. get_poweron_alias_linked_to_scada(eTerraAlias) - returns 1/0 if the eTerraAlias is scada linked in PowerOn
+        merged['eTerraAliasExistsInPO'] = merged.apply(lambda row: get_poweron_alias_exists(row['eTerraAlias']), axis=1)
+        merged['eTerraAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['eTerraAlias']), axis=1)
+
+        # And do the same for PowerOn Alias
+        merged['PowerOn Alias Exists'] = merged.apply(lambda row: get_poweron_alias_exists(row['PowerOn Alias']), axis=1)
+        merged['PowerOn Alias Linked to SCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['PowerOn Alias']), axis=1)
+
+        return merged
+
+
+    def merge_eterra_export_with_habdde_compare(self) -> pd.DataFrame:
         # Merge eTerra export with habdde compare
         print(f"Merging eTerra export with habdde compare on {self.eterra_export.shape[0]} rows")
         merged = pd.merge(
@@ -440,8 +488,11 @@ class RTUReportGenerator:
         # drop the HabCompKey column
         merged = merged.drop(columns=['HabCompKey'])
         print(f"Merged eTerra export with habdde compare on {merged.shape[0]} rows")
+        return merged
 
-        
+    
+    def merge_all_rtus_data(self, merged: pd.DataFrame) -> pd.DataFrame:
+        """Merge with all RTUs data."""
         print("Merging with all RTUs ... ")
         # Merge with all RTUs
         merged = pd.merge(
@@ -454,7 +505,10 @@ class RTUReportGenerator:
 
         # remove the TC Action column - we don't want this for input points but we'll query for it later when we add the control info
         merged = merged.drop(columns=['TC Action'])
-        
+
+        return merged
+    
+    def merge_iccp_compare_data(self, merged: pd.DataFrame) -> pd.DataFrame:
         # Merge with ICCP compare
         # merged = pd.merge(
         #     merged,
@@ -465,8 +519,10 @@ class RTUReportGenerator:
 
         # print("Merge report columns:")
         # print(merged.columns)
+        pass
+        return merged
 
-        
+    def merge_compare_alarms_data(self, merged: pd.DataFrame) -> pd.DataFrame:
         # Merge with compare report - this needs to be done in 2 parts
         # 1. First there are some columsn that we want that are associate with the point - to get these we need to get a subset fo columns then de-duplicate before the merge
         # 2. Then we want to add a small set of fields for each associated alarm.
@@ -566,6 +622,32 @@ class RTUReportGenerator:
             merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
             merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
 
+        return merged
+    
+    def merge_alarm_mismatch_manual_actions(self, merged: pd.DataFrame) -> pd.DataFrame:
+        # Merge with alarm mismatch manual actions
+        if self.alarm_mismatch_manual_actions is not None:
+
+            # rename the columns to have better names
+            self.alarm_mismatch_manual_actions.rename(columns={
+                'eTerra Alias': 'eTerraAlias',
+                'Comments on missmatch': 'AlarmMismatchComment',
+                'TemplateAlias': 'AlarmMismatchTemplateAlias'
+            }, inplace=True)
+
+            merged = pd.merge(
+                merged,
+                self.alarm_mismatch_manual_actions,
+                on=['eTerraAlias'],
+                how='left'
+            )
+
+            # set any na values to '' for the 2 columns that are added
+            merged['AlarmMismatchComment'] = merged['AlarmMismatchComment'].fillna('')
+            merged['AlarmMismatchTemplateAlias'] = merged['AlarmMismatchTemplateAlias'].fillna('')
+        return merged
+    
+    def merge_control_data(self, merged: pd.DataFrame) -> pd.DataFrame:
         print("Adding control info to merged data...")
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
         # For each control we need to get the following:
@@ -586,6 +668,9 @@ class RTUReportGenerator:
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}ConfigHealth') + 1, f'Ctrl{ctrl_num}AutoTestStatus', None)
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}AutoTestStatus') + 1, f'Ctrl{ctrl_num}TestResult', None)
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}TestResult') + 1, f'Ctrl{ctrl_num}TelecontrolAction', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}TelecontrolAction') + 1, f'Ctrl{ctrl_num}VisualCheckResult', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}VisualCheckResult') + 1, f'Ctrl{ctrl_num}ControlSentResult', None)
+            merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}ControlSentResult') + 1, f'Ctrl{ctrl_num}Comments', None)
         
         # Go through every row that has at least one control
         for idx, row in merged.iterrows():
@@ -648,7 +733,15 @@ class RTUReportGenerator:
                         merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info['ConfigHealth'].iloc[0] if len(poweron_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info['AutoTestResult'].iloc[0] if len(controls_test_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commissioning_info['CommissioningResult'].iloc[0] if len(manual_commissioning_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}VisualCheckResult'] = visual_check_info['CommissioningResult'].iloc[0] if len(visual_check_info) > 0 else None
+                        merged.at[idx, f'Ctrl{ctrl_num}ControlSentResult'] = control_sent_info['CommissioningResult'].iloc[0] if len(control_sent_info) > 0 else None
                         merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info['TC Action'].iloc[0]) if len(poweron_info) > 0 else None
+                        # Combine all the comments from the 3 manual commissioning tests into a single comment
+                        merged.at[idx, f'Ctrl{ctrl_num}Comments'] = (
+                            (visual_check_info['CommissioningComments'].iloc[0] if len(visual_check_info) > 0 else '') + ' ' +
+                            (control_sent_info['CommissioningComments'].iloc[0] if len(control_sent_info) > 0 else '') + ' ' + 
+                            (manual_commissioning_info['CommissioningComments'].iloc[0] if len(manual_commissioning_info) > 0 else '')
+                        ).strip()
 
                 merged.at[idx, 'NumControls'] = num_controls
                 merged.at[idx, 'NumControlsMatched'] = num_controls_matched
@@ -659,34 +752,8 @@ class RTUReportGenerator:
                 merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
-
-        # Merge with alarm mismatch manual actions
-        if self.alarm_mismatch_manual_actions is not None:
-
-            # rename the columns to have better names
-            self.alarm_mismatch_manual_actions.rename(columns={
-                'eTerra Alias': 'eTerraAlias',
-                'Comments on missmatch': 'AlarmMismatchComment',
-                'TemplateAlias': 'AlarmMismatchTemplateAlias'
-            }, inplace=True)
-
-            merged = pd.merge(
-                merged,
-                self.alarm_mismatch_manual_actions,
-                on=['eTerraAlias'],
-                how='left'
-            )
-
-            # set any na values to '' for the 2 columns that are added
-            merged['AlarmMismatchComment'] = merged['AlarmMismatchComment'].fillna('')
-            merged['AlarmMismatchTemplateAlias'] = merged['AlarmMismatchTemplateAlias'].fillna('')
-
-        if self.debug_dir:
-            print(f"Writing merged data to {self.debug_dir}/merged.csv")
-            merged.to_csv(f"{self.debug_dir}/merged.csv", index=False)
-        
         return merged
-    
+
     def add_issue_report_flags(self, merged_data: pd.DataFrame) -> pd.DataFrame:
         """Add issue report flags to the merged data."""
         # Add a flag for each issue type
