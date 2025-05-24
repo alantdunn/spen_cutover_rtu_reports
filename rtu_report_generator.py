@@ -445,12 +445,16 @@ class RTUReportGenerator:
     def add_derived_columns(self, merged: pd.DataFrame) -> pd.DataFrame:
         print(f" ✅ Adding derived columns to merged data...")
         # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
+        print(f"  🧠 Adding Type column...")
         merged['Type'] = merged.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
         # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
+        print(f"  🧠 Adding Ignore column...")
         merged['Ignore'] = merged.apply(lambda row: True if (row['IGNORE_RTU'] == True or row['IGNORE_POINT'] == True or row['OLD_DATA'] == True ) else False, axis=1)
         # We want to add a new column 'RTUComms' to the df that is True if the DeviceType is 'RTU and the eTerraAlias does not contain 'LDC'
+        print(f"  🧠 Adding RTUComms column...")
         merged['RTUComms'] = merged.apply(lambda row: True if row['DeviceType'] == 'RTU' and 'LDC' not in row['eTerraAlias'] else False, axis=1)
 
+        
         # Create 2 new columsn eTerraAliasExistsInPO, eTerraAliasLinkedToSCADA
         # For every value in the eTerraAlias column, set the value of these new fields: 1/0 if that comp exists in PowerOn, 1/0 if that comp is scada linked in PowerOn
         # we will use 2 functions to do this
@@ -468,12 +472,16 @@ class RTUReportGenerator:
         
         # 1. get_poweron_alias_exists(eTerraAlias) - returns 1/0 if the eTerraAlias exists in PowerOn
         # 2. get_poweron_alias_linked_to_scada(eTerraAlias) - returns 1/0 if the eTerraAlias is scada linked in PowerOn
+        print(f"  🧠 Adding eTerraAliasExistsInPO column...")
         merged['eTerraAliasExistsInPO'] = merged.apply(lambda row: get_poweron_alias_exists(row['eTerraAlias']), axis=1)
+        print(f"  🧠 Adding eTerraAliasLinkedToSCADA column...")
         merged['eTerraAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['eTerraAlias']), axis=1)
 
+        print(f"  🧠 Adding ICCPAliasExists column...")
         # And do the same for ICCP Alias
-        merged['ICCPAliasExists'] = merged.apply(lambda row: get_poweron_alias_exists(row['ICCP_Alias']), axis=1)
-        merged['ICCPAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['ICCP_Alias']), axis=1)
+        merged['ICCPAliasExists'] = merged.apply(lambda row: get_poweron_alias_exists(row['ICCP_ALIAS']), axis=1)
+        print(f"  🧠 Adding ICCPAliasLinkedToSCADA column...")
+        merged['ICCPAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['ICCP_ALIAS']), axis=1)
 
         return merged
 
@@ -687,7 +695,12 @@ class RTUReportGenerator:
         # Pre-process the lookups into dictionaries for faster access
         habdde_compare_dict = self.habdde_compare.set_index('GenericPointAddress').to_dict('index')
         poweron_dict = self.all_rtus.set_index('GenericPointAddress').to_dict('index')
-        controls_test_dict = self.controls_test.set_index('GenericPointAddress').to_dict('index')
+        
+        # Handle duplicate GenericPointAddress values in controls test data
+        controls_test_dict = {}
+        for _, row in self.controls_test.iterrows():
+            addr = row['GenericPointAddress']
+            controls_test_dict[addr] = row.to_dict()
         
         # Create dictionaries for manual commissioning lookups
         manual_commission_dict = {}
@@ -707,65 +720,70 @@ class RTUReportGenerator:
         # Process all rows at once using vectorized operations where possible
         controllable_rows = merged[merged['Controllable'] == '1']
         
-        for idx, row in controllable_rows.iterrows():
-            num_controls = 0
-            num_controls_matched = 0
-            num_controls_config_good = 0
-            num_controls_commission_ok = 0
-            num_controls_all_commission_ok = 0
+        with Progress() as progress:
+            task = progress.add_task("Processing controls...", total=len(controllable_rows))
+            
+            for idx, row in controllable_rows.iterrows():
+                num_controls = 0
+                num_controls_matched = 0
+                num_controls_config_good = 0
+                num_controls_commission_ok = 0
+                num_controls_all_commission_ok = 0
 
-            for ctrl_num in [1, 2]:
-                ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
-                if ctrl_addr != '':
-                    num_controls += 1
-                    num_controls_matched += 1
+                for ctrl_num in [1, 2]:
+                    ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
+                    if ctrl_addr != '':
+                        num_controls += 1
+                        num_controls_matched += 1
 
-                    # Lookup data from dictionaries
-                    habdde_compare_info = habdde_compare_dict.get(ctrl_addr, {})
-                    poweron_info = poweron_dict.get(ctrl_addr, {})
-                    controls_test_info = controls_test_dict.get(ctrl_addr, {})
-                    manual_commission_info = manual_commission_dict.get(ctrl_addr, {})
-                    visual_check_info = visual_check_dict.get(ctrl_addr, {})
-                    control_sent_info = control_sent_dict.get(ctrl_addr, {})
+                        # Lookup data from dictionaries
+                        habdde_compare_info = habdde_compare_dict.get(ctrl_addr, {})
+                        poweron_info = poweron_dict.get(ctrl_addr, {})
+                        controls_test_info = controls_test_dict.get(ctrl_addr, {})
+                        manual_commission_info = manual_commission_dict.get(ctrl_addr, {})
+                        visual_check_info = visual_check_dict.get(ctrl_addr, {})
+                        control_sent_info = control_sent_dict.get(ctrl_addr, {})
 
-                    if poweron_info and poweron_info.get('ConfigHealth') == 'GOOD':
-                        num_controls_config_good += 1
+                        if poweron_info and poweron_info.get('ConfigHealth') == 'GOOD':
+                            num_controls_config_good += 1
 
-                    # Check manual commissioning results
-                    if all(info.get('CommissioningResult') == 'OK' for info in 
-                          [visual_check_info, control_sent_info, manual_commission_info]):
-                        num_controls_all_commission_ok += 1
+                        # Check manual commissioning results
+                        if all(info.get('CommissioningResult') == 'OK' for info in 
+                              [visual_check_info, control_sent_info, manual_commission_info]):
+                            num_controls_all_commission_ok += 1
 
-                    if manual_commission_info.get('CommissioningResult') == 'OK':
-                        num_controls_commission_ok += 1
+                        if manual_commission_info.get('CommissioningResult') == 'OK':
+                            num_controls_commission_ok += 1
 
-                    # Update control columns
-                    merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info.get('HbddeCompareStatus')
-                    merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info.get('ConfigHealth')
-                    merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info.get('AutoTestResult')
-                    merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commission_info.get('CommissioningResult')
-                    merged.at[idx, f'Ctrl{ctrl_num}VisualCheckResult'] = visual_check_info.get('CommissioningResult')
-                    merged.at[idx, f'Ctrl{ctrl_num}ControlSentResult'] = control_sent_info.get('CommissioningResult')
-                    merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info.get('TC Action', ''))
-                    
-                    # Combine comments
-                    comments = ' '.join(filter(None, [
-                        visual_check_info.get('CommissioningComments', ''),
-                        control_sent_info.get('CommissioningComments', ''),
-                        manual_commission_info.get('CommissioningComments', '')
-                    ])).strip()
-                    merged.at[idx, f'Ctrl{ctrl_num}Comments'] = comments
+                        # Update control columns
+                        merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info.get('HbddeCompareStatus')
+                        merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info.get('ConfigHealth')
+                        merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info.get('AutoTestResult')
+                        merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commission_info.get('CommissioningResult')
+                        merged.at[idx, f'Ctrl{ctrl_num}VisualCheckResult'] = visual_check_info.get('CommissioningResult')
+                        merged.at[idx, f'Ctrl{ctrl_num}ControlSentResult'] = control_sent_info.get('CommissioningResult')
+                        merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info.get('TC Action', ''))
+                        
+                        # Combine comments
+                        comments = ' '.join(filter(None, [
+                            visual_check_info.get('CommissioningComments', ''),
+                            control_sent_info.get('CommissioningComments', ''),
+                            manual_commission_info.get('CommissioningComments', '')
+                        ])).strip()
+                        merged.at[idx, f'Ctrl{ctrl_num}Comments'] = comments
 
-            # Update summary columns
-            merged.at[idx, 'NumControls'] = num_controls
-            merged.at[idx, 'NumControlsMatched'] = num_controls_matched
-            merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
-            merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
-            merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
-            merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
-            merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
-            merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
-            merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
+                # Update summary columns
+                merged.at[idx, 'NumControls'] = num_controls
+                merged.at[idx, 'NumControlsMatched'] = num_controls_matched
+                merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
+                merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
+                merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
+                merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
+                merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
+                
+                progress.update(task, advance=1)
 
         print(f" ✅ Added control info to merged data on {merged.shape[0]} rows")
         return merged
