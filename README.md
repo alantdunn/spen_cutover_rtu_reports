@@ -43,6 +43,8 @@ The report will be formatted to be clear and easy to read and filter the data as
 
 ## INSTRUCTIONS
 
+**:warning:Check the database name in local_query/po_query.py:warning:**
+
 `python rtu_report_generator.py --writecache`
 `python rtu_report_generator.py --readcache`
 

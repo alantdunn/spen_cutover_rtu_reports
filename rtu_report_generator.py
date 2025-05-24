@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 import sqlite3
 from rich import print
+from rich.progress import Progress
 
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -442,6 +443,7 @@ class RTUReportGenerator:
     #                                                                    
     #####################################################################
     def add_derived_columns(self, merged: pd.DataFrame) -> pd.DataFrame:
+        print(f" ✅ Adding derived columns to merged data...")
         # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
         merged['Type'] = merged.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
         # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
@@ -469,16 +471,16 @@ class RTUReportGenerator:
         merged['eTerraAliasExistsInPO'] = merged.apply(lambda row: get_poweron_alias_exists(row['eTerraAlias']), axis=1)
         merged['eTerraAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['eTerraAlias']), axis=1)
 
-        # And do the same for PowerOn Alias
-        merged['PowerOn Alias Exists'] = merged.apply(lambda row: get_poweron_alias_exists(row['PowerOn Alias']), axis=1)
-        merged['PowerOn Alias Linked to SCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['PowerOn Alias']), axis=1)
+        # And do the same for ICCP Alias
+        merged['ICCPAliasExists'] = merged.apply(lambda row: get_poweron_alias_exists(row['ICCP_Alias']), axis=1)
+        merged['ICCPAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['ICCP_Alias']), axis=1)
 
         return merged
 
 
     def merge_eterra_export_with_habdde_compare(self) -> pd.DataFrame:
         # Merge eTerra export with habdde compare
-        print(f"Merging eTerra export with habdde compare on {self.eterra_export.shape[0]} rows")
+        print(f" 🧠 Merging eTerra export with habdde compare on {self.eterra_export.shape[0]} rows")
         merged = pd.merge(
             self.eterra_export,
             self.habdde_compare,
@@ -487,13 +489,13 @@ class RTUReportGenerator:
         )
         # drop the HabCompKey column
         merged = merged.drop(columns=['HabCompKey'])
-        print(f"Merged eTerra export with habdde compare on {merged.shape[0]} rows")
+        print(f" ✅ Merged eTerra export with habdde compare on {merged.shape[0]} rows")
         return merged
 
     
     def merge_all_rtus_data(self, merged: pd.DataFrame) -> pd.DataFrame:
         """Merge with all RTUs data."""
-        print("Merging with all RTUs ... ")
+        print(" 🧠 Merging with all RTUs ... ")
         # Merge with all RTUs
         merged = pd.merge(
             merged,
@@ -501,7 +503,7 @@ class RTUReportGenerator:
             on=['GenericPointAddress'],
             how='left'
         )
-        print(f"Merged with all RTUs on {merged.shape[0]} rows")
+        print(f" ✅ Merged with all RTUs on {merged.shape[0]} rows")
 
         # remove the TC Action column - we don't want this for input points but we'll query for it later when we add the control info
         merged = merged.drop(columns=['TC Action'])
@@ -523,6 +525,7 @@ class RTUReportGenerator:
         return merged
 
     def merge_compare_alarms_data(self, merged: pd.DataFrame) -> pd.DataFrame:
+        print(" 🧠 Merging with alarm compare report ... ")
         # Merge with compare report - this needs to be done in 2 parts
         # 1. First there are some columsn that we want that are associate with the point - to get these we need to get a subset fo columns then de-duplicate before the merge
         # 2. Then we want to add a small set of fields for each associated alarm.
@@ -565,6 +568,7 @@ class RTUReportGenerator:
             # Keep first row for each eTerraAlias (which will be 'Matched' if exists)
             point_related_df = point_related_df.groupby('CompAlarmEterraAlias').first().reset_index()
 
+        print(f"  🧠 Merging with Component level information for {point_related_df.shape[0]} rows")
         #1.b) merge the point related df with the compare alarms df
         merged = pd.merge(
             merged,
@@ -573,24 +577,25 @@ class RTUReportGenerator:
             right_on=['CompAlarmEterraAlias'],
             how='left'
         )
-        
+        print(f"  ✅ Merged with Component level information into {merged.shape[0]} rows")
+
         # Debug the merge - we are getting duplicates in the merged df
-        print(f"Merged df has {merged.shape[0]} rows")
+        print(f"    Merged df has {merged.shape[0]} rows")
         number_of_duplicates = merged.duplicated().sum()
-        print(f"Number of duplicates: {number_of_duplicates}")
+        print(f"    Number of duplicates: {number_of_duplicates}")
 
 
         #1.c de-duplicate the merged df
-        print(f"De-duplicating merged data...")
+        print(f"    De-duplicating merged data...")
         merged = merged.drop_duplicates()
 
-        print(f"After de-duplication, merged df has {merged.shape[0]} rows")
+        print(f"    After de-duplication, merged df has {merged.shape[0]} rows")
         #if we had duplciates, exit
         if number_of_duplicates > 0:
-            print(f"Duplicates were found, exiting")
+            print(f" ❌ Duplicates were found, exiting")
             sys.exit(1)
 
-        print(f"Initializing alarm related columns...")
+        print(f"  🧠 Initializing alarm related columns...")
         #1.d) add the alarm related columns into Alarm<value>_eTerraMessage and Alarm<value>_POMessage, and Alarm<value>_MessageMatch
         # Initialize empty columns for all possible alarm values
         for value in range(4):
@@ -599,33 +604,37 @@ class RTUReportGenerator:
             merged[f'Alarm{value}_MessageMatch'] = None
 
         # For each row in merged, find matching rows in compare_alarms and populate corresponding alarm columns
-        print(f"Adding alarm compare related columns to merged data...")
-        for idx, row in merged.iterrows():
-            matching_alarms = self.compare_alarms[
-                self.compare_alarms['CompAlarmEterraAlias'] == row['eTerraAlias']
-            ]
-            
-            # For each matching alarm row, populate the corresponding alarm columns based on CompAlarmValue
-            num_alarms = 0
-            num_alarms_matched = 0
-            for _, alarm_row in matching_alarms.iterrows():
-                value = alarm_row['CompAlarmValue']
-                merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
-                merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
-                merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
-                num_alarms += 1
-
-                if alarm_row[f'CompAlarmAlarmMessageMatch'] == '1':
-                    num_alarms_matched += 1
+        # print(f"   Adding alarm compare related columns to merged data...")
+        with Progress() as progress:
+            task = progress.add_task("    Adding alarm compare related columns to merged data...", total=merged.shape[0])
+            for idx, row in merged.iterrows():
+                matching_alarms = self.compare_alarms[
+                    self.compare_alarms['CompAlarmEterraAlias'] == row['eTerraAlias']
+                ]
                 
-            merged.at[idx, 'NumAlarms'] = num_alarms
-            merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
-            merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
+                # For each matching alarm row, populate the corresponding alarm columns based on CompAlarmValue
+                num_alarms = 0
+                num_alarms_matched = 0
+                for _, alarm_row in matching_alarms.iterrows():
+                    value = alarm_row['CompAlarmValue']
+                    merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
+                    merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
+                    merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
+                    num_alarms += 1
+                    if alarm_row[f'CompAlarmAlarmMessageMatch'] == '1':
+                        num_alarms_matched += 1
+                    
+                merged.at[idx, 'NumAlarms'] = num_alarms
+                merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
+                merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
+                progress.update(task, advance=1)
 
+        print(f"  ✅ Added alarm compare related columns to merged data on {merged.shape[0]} rows")
         return merged
     
     def merge_alarm_mismatch_manual_actions(self, merged: pd.DataFrame) -> pd.DataFrame:
         # Merge with alarm mismatch manual actions
+        print(" 🧠 Merging with alarm mismatch manual actions ... ")
         if self.alarm_mismatch_manual_actions is not None:
 
             # rename the columns to have better names
@@ -645,10 +654,12 @@ class RTUReportGenerator:
             # set any na values to '' for the 2 columns that are added
             merged['AlarmMismatchComment'] = merged['AlarmMismatchComment'].fillna('')
             merged['AlarmMismatchTemplateAlias'] = merged['AlarmMismatchTemplateAlias'].fillna('')
+
+        print(f" ✅ Merged with alarm mismatch manual actions on {merged.shape[0]} rows")
         return merged
     
     def merge_control_data(self, merged: pd.DataFrame) -> pd.DataFrame:
-        print("Adding control info to merged data...")
+        print(" 🧠 Adding control info to merged data...")
         # Control information needs to be joined differently as only a few key fields are requried for each associated control
         # For each control we need to get the following:
         # 1. match status from habdde compare
@@ -673,85 +684,90 @@ class RTUReportGenerator:
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}ControlSentResult') + 1, f'Ctrl{ctrl_num}Comments', None)
         
         # Go through every row that has at least one control
-        for idx, row in merged.iterrows():
-            if row['Controllable'] == '1':
-                num_controls = 0
-                num_controls_matched = 0
-                num_controls_config_good = 0
-                num_controls_commission_ok = 0
-                num_controls_all_commission_ok = 0
+        # Pre-process the lookups into dictionaries for faster access
+        habdde_compare_dict = self.habdde_compare.set_index('GenericPointAddress').to_dict('index')
+        poweron_dict = self.all_rtus.set_index('GenericPointAddress').to_dict('index')
+        controls_test_dict = self.controls_test.set_index('GenericPointAddress').to_dict('index')
+        
+        # Create dictionaries for manual commissioning lookups
+        manual_commission_dict = {}
+        visual_check_dict = {}
+        control_sent_dict = {}
+        
+        for _, row in self.manual_commissioning.iterrows():
+            addr = row['CommissioningControlAddress']
+            test = row['CommissioningTestName']
+            if test == 'Action Verified':
+                manual_commission_dict[addr] = row
+            elif test == 'Visual Check':
+                visual_check_dict[addr] = row
+            elif test == 'Control Sent':
+                control_sent_dict[addr] = row
 
-                # for each control
-                for ctrl_num in [1, 2]:
-                    ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
-                    if ctrl_addr != '':
-                        num_controls += 1
-                        num_controls_matched += 1
-                        # Get the habdde compare info
-                        habdde_compare_info = self.habdde_compare[self.habdde_compare['GenericPointAddress'] == ctrl_addr]
+        # Process all rows at once using vectorized operations where possible
+        controllable_rows = merged[merged['Controllable'] == '1']
+        
+        for idx, row in controllable_rows.iterrows():
+            num_controls = 0
+            num_controls_matched = 0
+            num_controls_config_good = 0
+            num_controls_commission_ok = 0
+            num_controls_all_commission_ok = 0
 
-                        # Get the poweron info
-                        poweron_info = self.all_rtus[self.all_rtus['GenericPointAddress'] == ctrl_addr]
+            for ctrl_num in [1, 2]:
+                ctrl_addr = row[f'Ctrl{ctrl_num}Addr']
+                if ctrl_addr != '':
+                    num_controls += 1
+                    num_controls_matched += 1
 
-                        if len(poweron_info) > 0:
-                            if poweron_info['ConfigHealth'].iloc[0] == 'GOOD':
-                                num_controls_config_good += 1
+                    # Lookup data from dictionaries
+                    habdde_compare_info = habdde_compare_dict.get(ctrl_addr, {})
+                    poweron_info = poweron_dict.get(ctrl_addr, {})
+                    controls_test_info = controls_test_dict.get(ctrl_addr, {})
+                    manual_commission_info = manual_commission_dict.get(ctrl_addr, {})
+                    visual_check_info = visual_check_dict.get(ctrl_addr, {})
+                    control_sent_info = control_sent_dict.get(ctrl_addr, {})
 
-                        # Get the controls test info
-                        controls_test_info = self.controls_test[self.controls_test['GenericPointAddress'] == ctrl_addr]
+                    if poweron_info and poweron_info.get('ConfigHealth') == 'GOOD':
+                        num_controls_config_good += 1
 
-                        # Get the manual commissioning info just the Action Verified test first
-                        manual_commissioning_info = self.manual_commissioning[
-                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
-                            (self.manual_commissioning['CommissioningTestName'] == 'Action Verified')
-                        ]
-                        # Also get the Visual Check test
-                        visual_check_info = self.manual_commissioning[
-                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
-                            (self.manual_commissioning['CommissioningTestName'] == 'Visual Check')
-                        ]
-                        # and the Control Sent test
-                        control_sent_info = self.manual_commissioning[
-                            (self.manual_commissioning['CommissioningControlAddress'] == ctrl_addr) &
-                            (self.manual_commissioning['CommissioningTestName'] == 'Control Sent')
-                        ]
-                        
-                        # get the combine check for all 3 manual commissioning tests
-                        if len(visual_check_info) == 1 and len(control_sent_info) == 1 and len(manual_commissioning_info) == 1:
-                            VisualCheckisok = visual_check_info['CommissioningResult'].iloc[0] == 'OK'
-                            ControlSentisok = control_sent_info['CommissioningResult'].iloc[0] == 'OK'
-                            ActionVerifiedisok = manual_commissioning_info['CommissioningResult'].iloc[0] == 'OK'
-                            if VisualCheckisok and ControlSentisok and ActionVerifiedisok:
-                                num_controls_all_commission_ok += 1
+                    # Check manual commissioning results
+                    if all(info.get('CommissioningResult') == 'OK' for info in 
+                          [visual_check_info, control_sent_info, manual_commission_info]):
+                        num_controls_all_commission_ok += 1
 
-                        # get just the Action Verified test
-                        if len(manual_commissioning_info) > 0 and manual_commissioning_info['CommissioningResult'].iloc[0] == 'OK':
-                            num_controls_commission_ok += 1
+                    if manual_commission_info.get('CommissioningResult') == 'OK':
+                        num_controls_commission_ok += 1
 
-                        # Populate the columns for this control
-                        merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info['HbddeCompareStatus'].iloc[0] if len(habdde_compare_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info['ConfigHealth'].iloc[0] if len(poweron_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info['AutoTestResult'].iloc[0] if len(controls_test_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commissioning_info['CommissioningResult'].iloc[0] if len(manual_commissioning_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}VisualCheckResult'] = visual_check_info['CommissioningResult'].iloc[0] if len(visual_check_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}ControlSentResult'] = control_sent_info['CommissioningResult'].iloc[0] if len(control_sent_info) > 0 else None
-                        merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info['TC Action'].iloc[0]) if len(poweron_info) > 0 else None
-                        # Combine all the comments from the 3 manual commissioning tests into a single comment
-                        merged.at[idx, f'Ctrl{ctrl_num}Comments'] = (
-                            (visual_check_info['CommissioningComments'].iloc[0] if len(visual_check_info) > 0 else '') + ' ' +
-                            (control_sent_info['CommissioningComments'].iloc[0] if len(control_sent_info) > 0 else '') + ' ' + 
-                            (manual_commissioning_info['CommissioningComments'].iloc[0] if len(manual_commissioning_info) > 0 else '')
-                        ).strip()
+                    # Update control columns
+                    merged.at[idx, f'Ctrl{ctrl_num}MatchStatus'] = habdde_compare_info.get('HbddeCompareStatus')
+                    merged.at[idx, f'Ctrl{ctrl_num}ConfigHealth'] = poweron_info.get('ConfigHealth')
+                    merged.at[idx, f'Ctrl{ctrl_num}AutoTestStatus'] = controls_test_info.get('AutoTestResult')
+                    merged.at[idx, f'Ctrl{ctrl_num}TestResult'] = manual_commission_info.get('CommissioningResult')
+                    merged.at[idx, f'Ctrl{ctrl_num}VisualCheckResult'] = visual_check_info.get('CommissioningResult')
+                    merged.at[idx, f'Ctrl{ctrl_num}ControlSentResult'] = control_sent_info.get('CommissioningResult')
+                    merged.at[idx, f'Ctrl{ctrl_num}TelecontrolAction'] = str(poweron_info.get('TC Action', ''))
+                    
+                    # Combine comments
+                    comments = ' '.join(filter(None, [
+                        visual_check_info.get('CommissioningComments', ''),
+                        control_sent_info.get('CommissioningComments', ''),
+                        manual_commission_info.get('CommissioningComments', '')
+                    ])).strip()
+                    merged.at[idx, f'Ctrl{ctrl_num}Comments'] = comments
 
-                merged.at[idx, 'NumControls'] = num_controls
-                merged.at[idx, 'NumControlsMatched'] = num_controls_matched
-                merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
-                merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
-                merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
-                merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
-                merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
-                merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
-                merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
+            # Update summary columns
+            merged.at[idx, 'NumControls'] = num_controls
+            merged.at[idx, 'NumControlsMatched'] = num_controls_matched
+            merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
+            merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
+            merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
+            merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
+            merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
+            merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
+            merged.at[idx, 'PercentControlsAllCommissionOk'] = num_controls_all_commission_ok / num_controls if num_controls > 0 else 0
+
+        print(f" ✅ Added control info to merged data on {merged.shape[0]} rows")
         return merged
 
     def add_issue_report_flags(self, merged_data: pd.DataFrame) -> pd.DataFrame:
@@ -764,7 +780,7 @@ class RTUReportGenerator:
         # 5. Items missing from PowerOn that are in eTerra
         #6. Components missing alarm references in Poweron
 
-        print("Adding issue report flags to the merged data...")
+        print(" 🧠 Adding issue report flags to the merged data...")
         # Convert some columns to boolean if not already
         merged_data = merged_data.reset_index(drop=True)
 
@@ -798,6 +814,7 @@ class RTUReportGenerator:
 
         for report in reports_list:
             merged_data = generate_defect_report_by_name(merged_data, report)
+        print(f" ✅ Added issue report flags to the merged data on {merged_data.shape[0]} rows")
         return merged_data
     
     def generate_mk2a_card_report(self):

@@ -50,13 +50,18 @@ def check_if_component_alias_exists_in_poweron(component_alias: str) -> bool:
 def checkIfComponentAliasInScanPointComponents(component_alias):
     if component_alias is None or component_alias == "":
         return False
-    else:
-        try:
-            row = RDBMS.fetch_one(
-                "SELECT 1 FROM scan_point_components WHERE COMPONENT_ALIAS = ?",
-                (component_alias,)
-            )
-            return row is not None
-        except sqlite3.Error as e:
-            print(f"Error in checkIfComponentAliasInScanPointComponents for alias = '{component_alias}', with query 'SELECT 1 FROM scan_point_components WHERE COMPONENT_ALIAS = ?': {e}")
-            return False
+    # handle alias is nan
+    if component_alias != component_alias:
+        return False
+    
+    db = sqlite3.connect(poweron_db)
+    cursor = db.cursor()
+    
+    try:
+        query = "SELECT 1 FROM scan_point_components WHERE COMPONENT_ALIAS = ?"
+        cursor.execute(query, (component_alias, ))
+        row = cursor.fetchone()
+        return True if row else False
+    except sqlite3.Error as e:
+        print(f"Error in checkIfComponentAliasInScanPointComponents for alias = '{component_alias}', with query 'SELECT 1 FROM scan_point_components WHERE COMPONENT_ALIAS = ?': {e}")
+        return False
