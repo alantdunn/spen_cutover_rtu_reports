@@ -611,31 +611,45 @@ class RTUReportGenerator:
             merged[f'Alarm{value}_POMessage'] = None 
             merged[f'Alarm{value}_MessageMatch'] = None
 
-        # For each row in merged, find matching rows in compare_alarms and populate corresponding alarm columns
-        # print(f"   Adding alarm compare related columns to merged data...")
+        # Create a lookup dictionary for faster access
+        alarm_lookup = {}
+        for _, alarm_row in self.compare_alarms.iterrows():
+            eterra_alias = alarm_row['CompAlarmEterraAlias']
+            if eterra_alias not in alarm_lookup:
+                alarm_lookup[eterra_alias] = []
+            alarm_lookup[eterra_alias].append(alarm_row)
+
+        # Process alarms using vectorized operations where possible
+        merged['NumAlarms'] = 0
+        merged['NumAlarmsMatched'] = 0
+        merged['PercentAlarmsMatched'] = 0
+
         with Progress() as progress:
-            task = progress.add_task("    Adding alarm compare related columns to merged data...", total=merged.shape[0])
-            for idx, row in merged.iterrows():
-                matching_alarms = self.compare_alarms[
-                    self.compare_alarms['CompAlarmEterraAlias'] == row['eTerraAlias']
-                ]
+            task = progress.add_task("    Processing Alarms ...", total=len(merged))
+            
+            # Process in chunks for better performance
+            chunk_size = 1000
+            for start in range(0, len(merged), chunk_size):
+                chunk = merged.iloc[start:start + chunk_size]
                 
-                # For each matching alarm row, populate the corresponding alarm columns based on CompAlarmValue
-                num_alarms = 0
-                num_alarms_matched = 0
-                for _, alarm_row in matching_alarms.iterrows():
-                    value = alarm_row['CompAlarmValue']
-                    merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
-                    merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
-                    merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
-                    num_alarms += 1
-                    if alarm_row[f'CompAlarmAlarmMessageMatch'] == '1':
-                        num_alarms_matched += 1
+                for idx, row in chunk.iterrows():
+                    matching_alarms = alarm_lookup.get(row['eTerraAlias'], [])
                     
-                merged.at[idx, 'NumAlarms'] = num_alarms
-                merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
-                merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
-                progress.update(task, advance=1)
+                    num_alarms = len(matching_alarms)
+                    num_alarms_matched = 0
+                    
+                    for alarm_row in matching_alarms:
+                        value = alarm_row['CompAlarmValue']
+                        merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
+                        merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
+                        merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
+                        if alarm_row['CompAlarmAlarmMessageMatch'] == '1':
+                            num_alarms_matched += 1
+                            
+                    merged.at[idx, 'NumAlarms'] = num_alarms
+                    merged.at[idx, 'NumAlarmsMatched'] = num_alarms_matched
+                    merged.at[idx, 'PercentAlarmsMatched'] = num_alarms_matched / num_alarms if num_alarms > 0 else 0
+                    progress.update(task, advance=1)
 
         print(f"  ✅ Added alarm compare related columns to merged data on {merged.shape[0]} rows")
         return merged
@@ -721,7 +735,7 @@ class RTUReportGenerator:
         controllable_rows = merged[merged['Controllable'] == '1']
         
         with Progress() as progress:
-            task = progress.add_task("Processing controls...", total=len(controllable_rows))
+            task = progress.add_task("    Processing controls...", total=len(controllable_rows))
             
             for idx, row in controllable_rows.iterrows():
                 num_controls = 0
