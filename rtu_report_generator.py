@@ -841,6 +841,8 @@ class RTUReportGenerator:
             'Report12',
             'Report13',
             'Report14',
+            'Report15',
+            'Report16',
             'ReportANY'
         ]
 

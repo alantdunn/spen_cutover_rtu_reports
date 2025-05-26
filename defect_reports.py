@@ -275,6 +275,38 @@ REPORT_CONFIGS = {
             ],
         'combine_with': 'and'
     },
+    'Report15': {
+        'name': 'ICCP SD Inverted but needs un-inverted', 
+        'debug': True,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('GenericType', '==', 'SD'),
+            ('ICCP->PO', '==', 'X'),
+            ('POInterpretation', '==', 'EFEP_SP_INV_IT'),
+            ('Alarm0_MessageMatch', '==', False),
+            ('CompAlarmTemplateAlias','==','ICCP MASTER SD ALARM')
+            ],
+        'combine_with': 'and'
+    },
+        'Report16': {
+        'name': 'ICCP SD Inverted BUT IN SPT HIERARCHY', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('GenericType', '==', 'SD'),
+            ('ICCP->PO', '==', 'X'),
+            ('POInterpretation', '==', 'EFEP_SP_INV_IT'),
+            ('Alarm0_MessageMatch', '==', False),
+            ('CompAlarmTemplateAlias','!=','ICCP MASTER SD ALARM')
+            ],
+        'combine_with': 'and'
+    },
     'ReportANY': {
         'name': 'Any Defect', 
         'debug': False,

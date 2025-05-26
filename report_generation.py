@@ -226,23 +226,13 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
 
     # Derive the alarm status cols (for alarm number 0..3)
     for i in range(4):
-        # df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: '1' if x == 'TRUE' else '0' if x == 'FALSE' else '')
         df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch'].apply(lambda x: 1 if x == True else 0 if x == False else '')
-        #df[f'Alarm{i}'] = df[f'Alarm{i}_MessageMatch']
 
     # Derive the ctrl status cols (for ctrl number 1..2)
     for i in range(1,3):
         df[f'Ctrl{i}'] = df.apply(lambda row: 1 if row[f'Ctrl{i}TestResult'] == 'OK' else 0 if row[f'Ctrl{i}TestResult'] == 'Fail' else '', axis=1)
         df[f'Ctrl{i}V'] = df.apply(lambda row: 1 if row[f'Ctrl{i}VisualCheckResult'] == 'OK' else 0 if row[f'Ctrl{i}VisualCheckResult'] == 'Fail' else '', axis=1)
         df[f'Ctrl{i}C'] = df.apply(lambda row: 1 if row[f'Ctrl{i}ControlSentResult'] == 'OK' else 0 if row[f'Ctrl{i}ControlSentResult'] == 'Fail' else '', axis=1)
-
-    # Sort out a few bespoke columns
-    # # first get a Type column that also flags the dummy rows are DUMMY, Get the value of GenericType unless the RTUId = '(€€€€€€€€:)'
-    # df['Type'] = df.apply(lambda row: 'DUMMY' if row['RTUId'] == '(€€€€€€€€:)' else row['GenericType'], axis=1)
-    # # now make an ignore column that is TRUE if any of IGNORE_RTU, IGNORE_POINT, OLD_DATA are TRUE
-    # df['Ignore'] = df.apply(lambda row: True if (row['IGNORE_RTU'] == True or row['IGNORE_POINT'] == True or row['OLD_DATA'] == True ) else False, axis=1)
-    # # We want to add a new column 'RTUComms' to the df that is True if the DeviceType is 'RTU and the eTerraAlias does not contain 'LDC'
-    # df['RTUComms'] = df.apply(lambda row: True if row['DeviceType'] == 'RTU' and 'LDC' not in row['eTerraAlias'] else False, axis=1)
 
     report_columns = [
         {'dfCol': 'GenericPointAddress',            'ColName': 'GenericPointAddress',           'ColWidth': 25,     'Align': 'left',    'ColFill': None,        'ConditionalFormatting': None,      'Hidden': False},
@@ -295,88 +285,103 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
         {'dfCol': 'Report7',            'ColName': 'Controls Not Linked',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Report8',            'ColName': 'Ctrl-able eTerra Points with no Controls',  'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Report9',            'ColName': 'Alarm Mismatch Manual Actions',             'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
-        {'dfCol': 'Report10',           'ColName': 'RESET w/ CtrlFunc 0',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report10',           'ColName': 'RESET w/ CtrlFunc 0',                       'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': True},
         {'dfCol': 'Report11',           'ColName': 'SWDD with LAMP symbol',                     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Report12',           'ColName': 'Missing from DLPoint',                      'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Report13',           'ColName': 'DD symbol should be SD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Report14',           'ColName': 'SD symbol should be DD',                    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
+        {'dfCol': 'Report15',           'ColName': 'ICCP SD Inverted but needs un-inverted',    'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': True},
+        {'dfCol': 'Report16',           'ColName': 'ICCP SD Inverted but in SPT hierarchy',     'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': True},
         {'dfCol': 'ReportANY',          'ColName': 'Any Defect',                                'ColWidth': 8,      'Align': 'center',  'ColFill': None,        'ConditionalFormatting': 'TrueFalse',      'Hidden': False},
         {'dfCol': 'Review Status',                  'ColName': 'Review Status',                 'ColWidth': 12,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None,      'Hidden': False},
         {'dfCol': 'Comments',                       'ColName': 'Comments',                      'ColWidth': 60,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None,      'Hidden': False}
     ]
     
-    for idx, col in enumerate(report_columns, 1):
-        if col['dfCol'] not in df.columns:
-            print(f"Column {col['dfCol']} not found in df ... adding empty column")
-            df[col['dfCol']] = ''  # Add empty column if missing
-        # if the ColName is different from the dfCol, then rename the column
-        if col['ColName'] != col['dfCol']:
-            df = df.rename(columns={col['dfCol']: col['ColName']})
-
-    report_fields = [col['ColName'] for col in report_columns]
-
-    # create a new dataframe with the report fields and the new columns
-    report_df = pd.DataFrame(columns=report_fields)
-
-    # First ensure all required columns exist in merged_data
-    for col in report_fields:
-        if col not in df.columns:
-            print(f"Column {col} not found in df ... adding empty column")
-            df[col] = ''  # Add empty column if missing
-            
-    # Now we can safely select and concat
-
-    report_df = pd.concat([report_df, df[report_fields]], ignore_index=True)
-
-    # save the report dataframe to an xlsx file with formatting
-    writer = pd.ExcelWriter(output_path / f"defect_report_all.xlsx", engine='openpyxl')
-    report_df.to_excel(writer, index=False)
-
-    # Get the worksheet
-    worksheet = writer.sheets['Sheet1']
-    
-    # Add filters to row 1
-    worksheet.auto_filter.ref = worksheet.dimensions
-    
-    # Format header row
-    for cell in worksheet[1]:
-        cell.font = openpyxl.styles.Font(bold=True)
-        cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+    def create_excel_report(df, report_columns, output_path, report_name):
+        """
+        Creates an Excel report with the specified columns and formatting
         
-    # Freeze top row
-    worksheet.freeze_panes = worksheet['F2']
+        Args:
+            df: DataFrame containing the data
+            report_columns: List of column definitions with formatting info
+            output_path: Path where report should be saved
+            report_name: Name of the report file (without .xlsx extension)
+        """
+        # Add any missing columns to dataframe
+        for col in report_columns:
+            if col['dfCol'] not in df.columns:
+                print(f"Column {col['dfCol']} not found in df ... adding empty column")
+                df[col['dfCol']] = ''
+            # Rename columns where ColName differs from dfCol
+            if col['ColName'] != col['dfCol']:
+                df = df.rename(columns={col['dfCol']: col['ColName']})
 
-    for idx, col in enumerate(report_columns, 1):
+        # Get list of column names for report
+        report_fields = [col['ColName'] for col in report_columns]
 
-        # Rename report columns to be more readable going from dfCol to ColName 
-        if col['dfCol'] != col['ColName']:
-            worksheet[f"{get_column_letter(idx)}1"].value = col['ColName']
+        # Create report dataframe with required columns
+        report_df = pd.DataFrame(columns=report_fields)
+        
+        # Add data to report dataframe
+        for col in report_fields:
+            if col not in df.columns:
+                print(f"Column {col} not found in df ... adding empty column")
+                df[col] = ''
+                
+        report_df = pd.concat([report_df, df[report_fields]], ignore_index=True)
 
-        # Setup column widths
-        worksheet.column_dimensions[get_column_letter(idx)].width = col['ColWidth']
+        # Create Excel writer and write data
+        writer = pd.ExcelWriter(output_path / f"{report_name}.xlsx", engine='openpyxl')
+        report_df.to_excel(writer, index=False)
 
-        # apply the alignment
-        for row in range(1, len(report_df) + 2):
-            worksheet[f"{get_column_letter(idx)}{row}"].alignment = openpyxl.styles.Alignment(horizontal=col['Align'])
+        # Get worksheet for formatting
+        worksheet = writer.sheets['Sheet1']
+        
+        # Add filters and format header row
+        worksheet.auto_filter.ref = worksheet.dimensions
+        for cell in worksheet[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+            cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+            
+        # Freeze top row
+        worksheet.freeze_panes = worksheet['F2']
 
-        # Apply the fill colors and set all borders to be black and 1pt thick
-        for row in range(2, len(report_df) + 2):
-                cell = worksheet[f"{get_column_letter(idx)}{row}"]
+        # Apply column formatting
+        for idx, col in enumerate(report_columns, 1):
+            col_letter = get_column_letter(idx)
+
+            # Set column header
+            if col['dfCol'] != col['ColName']:
+                worksheet[f"{col_letter}1"].value = col['ColName']
+
+            # Set column width
+            worksheet.column_dimensions[col_letter].width = col['ColWidth']
+
+            # Set alignment for all cells in column
+            for row in range(1, len(report_df) + 2):
+                worksheet[f"{col_letter}{row}"].alignment = openpyxl.styles.Alignment(horizontal=col['Align'])
+
+            # Apply fill colors and borders
+            for row in range(2, len(report_df) + 2):
+                cell = worksheet[f"{col_letter}{row}"]
                 if col['ColFill']:
                     cell.fill = openpyxl.styles.PatternFill(start_color=col['ColFill'], end_color=col['ColFill'], fill_type='solid')
-                cell.border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin', color='000000'),
-                                                    right=openpyxl.styles.Side(style='thin', color='000000'),
-                                                    top=openpyxl.styles.Side(style='thin', color='000000'),
-                                                    bottom=openpyxl.styles.Side(style='thin', color='000000'))
+                cell.border = openpyxl.styles.Border(
+                    left=openpyxl.styles.Side(style='thin', color='000000'),
+                    right=openpyxl.styles.Side(style='thin', color='000000'),
+                    top=openpyxl.styles.Side(style='thin', color='000000'),
+                    bottom=openpyxl.styles.Side(style='thin', color='000000')
+                )
 
-    apply_conditional_formatting(worksheet, report_columns)
+        # Apply conditional formatting
+        apply_conditional_formatting(worksheet, report_columns)
 
-    # Hide the columns that are hidden
-    for idx, col in enumerate(report_columns, 1):
-        if col['Hidden']:
-            worksheet.column_dimensions[get_column_letter(idx)].hidden = True
+        # Hide specified columns
+        for idx, col in enumerate(report_columns, 1):
+            if col['Hidden']:
+                worksheet.column_dimensions[get_column_letter(idx)].hidden = True
 
-    writer.close()
+        writer.close()
     
     print(f"Defect report generated successfully: {output_path / f'defect_report_all.xlsx'}")
 

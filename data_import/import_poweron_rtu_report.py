@@ -30,6 +30,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
     # | eterra_point_id         | 
     # | eterra_point_name       | 
     # | eterra_sub              | 
+    # | interpretation          | POInterpretation
     # | raw_max                 | 
     # | raw_min                 | 
     # | recordType              | POType
@@ -70,6 +71,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'desc': 'PODescription',
         'recordType': 'POType',
         'scan_row': 'ScanInputRow',
+        'interpretation': 'POInterpretation',
         'shift': 'Shift',
         'siref1': 'ScanInputRef',
         'size': 'Size',
@@ -141,6 +143,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'Shift',
         'ScanInputRef',
         'Size',
+        'POInterpretation',
         'Menu',
         'Symbol',
         'TC Action',
