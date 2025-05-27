@@ -142,6 +142,9 @@ def clean_eterra_point_export(df: pd.DataFrame) -> pd.DataFrame:
     # | protocol            | Protocol
     # | ctrlable            | Controllable
     # | arg                 | 
+    # | values              | OPTIONAL - MAY NOT BE PRESENT
+    # | xdis                | OPTIONAL - MAY NOT BE PRESENT
+    # | sdis                | OPTIONAL - MAY NOT BE PRESENT
     # |                     | GenericType : derived from Size (pnttyp) to SD or DD
     # |                     | IOA : IOA1 << 16 + IOA2
     # |                     | RTUId : (RTU:RTUAddress)
@@ -234,11 +237,23 @@ def clean_eterra_point_export(df: pd.DataFrame) -> pd.DataFrame:
         'ICCP_ALIAS',
         'PowerOn Alias',
         'PowerOn Alias Exists',
-        'PowerOn Alias Linked to SCADA'
+        'PowerOn Alias Linked to SCADA',
+        'values',
+        'xdis', 
+        'sdis'
     ]
-    columns_to_keep = [col for col in available_columns if col in df.columns]
 
-    df = df[columns_to_keep]
+    # Only keep columns that exist in df to avoid KeyError
+    columns_to_keep = []
+    for col in available_columns:
+        if col in df.columns:
+            columns_to_keep.append(col)
+
+    # Ensure we have at least some columns before filtering
+    if len(columns_to_keep) > 0:
+        df = df[columns_to_keep]
+    else:
+        print("Warning: No matching columns found in dataframe")
     return df
 
 def clean_eterra_analog_export(df: pd.DataFrame) -> pd.DataFrame:

@@ -277,7 +277,7 @@ REPORT_CONFIGS = {
     },
     'Report15': {
         'name': 'ICCP SD Inverted but needs un-inverted', 
-        'debug': True,
+        'debug': False,
         'required_cols': [],
         'criteria': [
             ('IGNORE_RTU', '==', False),

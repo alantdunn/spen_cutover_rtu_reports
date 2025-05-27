@@ -297,91 +297,78 @@ def generate_defect_report_in_excel(df: pd.DataFrame, output_path: Path):
         {'dfCol': 'Comments',                       'ColName': 'Comments',                      'ColWidth': 60,     'Align': 'left',    'ColFill': 'FFFFE0',    'ConditionalFormatting': None,      'Hidden': False}
     ]
     
-    def create_excel_report(df, report_columns, output_path, report_name):
-        """
-        Creates an Excel report with the specified columns and formatting
-        
-        Args:
-            df: DataFrame containing the data
-            report_columns: List of column definitions with formatting info
-            output_path: Path where report should be saved
-            report_name: Name of the report file (without .xlsx extension)
-        """
-        # Add any missing columns to dataframe
-        for col in report_columns:
-            if col['dfCol'] not in df.columns:
-                print(f"Column {col['dfCol']} not found in df ... adding empty column")
-                df[col['dfCol']] = ''
-            # Rename columns where ColName differs from dfCol
-            if col['ColName'] != col['dfCol']:
-                df = df.rename(columns={col['dfCol']: col['ColName']})
+    for idx, col in enumerate(report_columns, 1):
+        if col['dfCol'] not in df.columns:
+            print(f"Column {col['dfCol']} not found in df ... adding empty column")
+            df[col['dfCol']] = ''  # Add empty column if missing
+        # if the ColName is different from the dfCol, then rename the column
+        if col['ColName'] != col['dfCol']:
+            df = df.rename(columns={col['dfCol']: col['ColName']})
 
-        # Get list of column names for report
-        report_fields = [col['ColName'] for col in report_columns]
+    report_fields = [col['ColName'] for col in report_columns]
 
-        # Create report dataframe with required columns
-        report_df = pd.DataFrame(columns=report_fields)
-        
-        # Add data to report dataframe
-        for col in report_fields:
-            if col not in df.columns:
-                print(f"Column {col} not found in df ... adding empty column")
-                df[col] = ''
-                
-        report_df = pd.concat([report_df, df[report_fields]], ignore_index=True)
+    # create a new dataframe with the report fields and the new columns
+    report_df = pd.DataFrame(columns=report_fields)
 
-        # Create Excel writer and write data
-        writer = pd.ExcelWriter(output_path / f"{report_name}.xlsx", engine='openpyxl')
-        report_df.to_excel(writer, index=False)
-
-        # Get worksheet for formatting
-        worksheet = writer.sheets['Sheet1']
-        
-        # Add filters and format header row
-        worksheet.auto_filter.ref = worksheet.dimensions
-        for cell in worksheet[1]:
-            cell.font = openpyxl.styles.Font(bold=True)
-            cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+    # First ensure all required columns exist in merged_data
+    for col in report_fields:
+        if col not in df.columns:
+            print(f"Column {col} not found in df ... adding empty column")
+            df[col] = ''  # Add empty column if missing
             
-        # Freeze top row
-        worksheet.freeze_panes = worksheet['F2']
+    # Now we can safely select and concat
 
-        # Apply column formatting
-        for idx, col in enumerate(report_columns, 1):
-            col_letter = get_column_letter(idx)
+    report_df = pd.concat([report_df, df[report_fields]], ignore_index=True)
 
-            # Set column header
-            if col['dfCol'] != col['ColName']:
-                worksheet[f"{col_letter}1"].value = col['ColName']
+    # save the report dataframe to an xlsx file with formatting
+    writer = pd.ExcelWriter(output_path / f"defect_report_all.xlsx", engine='openpyxl')
+    report_df.to_excel(writer, index=False)
 
-            # Set column width
-            worksheet.column_dimensions[col_letter].width = col['ColWidth']
+    # Get the worksheet
+    worksheet = writer.sheets['Sheet1']
+    
+    # Add filters to row 1
+    worksheet.auto_filter.ref = worksheet.dimensions
+    
+    # Format header row
+    for cell in worksheet[1]:
+        cell.font = openpyxl.styles.Font(bold=True)
+        cell.fill = openpyxl.styles.PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+        
+    # Freeze top row
+    worksheet.freeze_panes = worksheet['F2']
 
-            # Set alignment for all cells in column
-            for row in range(1, len(report_df) + 2):
-                worksheet[f"{col_letter}{row}"].alignment = openpyxl.styles.Alignment(horizontal=col['Align'])
+    for idx, col in enumerate(report_columns, 1):
 
-            # Apply fill colors and borders
-            for row in range(2, len(report_df) + 2):
-                cell = worksheet[f"{col_letter}{row}"]
+        # Rename report columns to be more readable going from dfCol to ColName 
+        if col['dfCol'] != col['ColName']:
+            worksheet[f"{get_column_letter(idx)}1"].value = col['ColName']
+
+        # Setup column widths
+        worksheet.column_dimensions[get_column_letter(idx)].width = col['ColWidth']
+
+        # apply the alignment
+        for row in range(1, len(report_df) + 2):
+            worksheet[f"{get_column_letter(idx)}{row}"].alignment = openpyxl.styles.Alignment(horizontal=col['Align'])
+
+        # Apply the fill colors and set all borders to be black and 1pt thick
+        for row in range(2, len(report_df) + 2):
+                cell = worksheet[f"{get_column_letter(idx)}{row}"]
                 if col['ColFill']:
                     cell.fill = openpyxl.styles.PatternFill(start_color=col['ColFill'], end_color=col['ColFill'], fill_type='solid')
-                cell.border = openpyxl.styles.Border(
-                    left=openpyxl.styles.Side(style='thin', color='000000'),
-                    right=openpyxl.styles.Side(style='thin', color='000000'),
-                    top=openpyxl.styles.Side(style='thin', color='000000'),
-                    bottom=openpyxl.styles.Side(style='thin', color='000000')
-                )
+                cell.border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin', color='000000'),
+                                                    right=openpyxl.styles.Side(style='thin', color='000000'),
+                                                    top=openpyxl.styles.Side(style='thin', color='000000'),
+                                                    bottom=openpyxl.styles.Side(style='thin', color='000000'))
 
-        # Apply conditional formatting
-        apply_conditional_formatting(worksheet, report_columns)
+    apply_conditional_formatting(worksheet, report_columns)
 
-        # Hide specified columns
-        for idx, col in enumerate(report_columns, 1):
-            if col['Hidden']:
-                worksheet.column_dimensions[get_column_letter(idx)].hidden = True
+    # Hide the columns that are hidden
+    for idx, col in enumerate(report_columns, 1):
+        if col['Hidden']:
+            worksheet.column_dimensions[get_column_letter(idx)].hidden = True
 
-        writer.close()
+    writer.close()
     
     print(f"Defect report generated successfully: {output_path / f'defect_report_all.xlsx'}")
 

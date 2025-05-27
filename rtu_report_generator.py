@@ -938,41 +938,16 @@ class RTUReportGenerator:
         
         print(f"{num_points} points in the merged data: {num_SD_points} SD, {num_DD_points} DD, {num_A_points} A, {num_DUMMY_points} DUMMY")
 
-
-
     ''' ================================
-        Generate the report
+        Generate the rtu report
         ================================ '''
-    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None, write_cache: bool = False, read_cache: bool = False):
-        """Generate report for specified RTU or substation."""
-        if not self.validate_data_files():
-            sys.exit(1)
-        
-        if read_cache:
-            self.read_data_cache(rtu_name, substation)
-        
-        if not read_cache or self.merged_data.shape[0] == 0:
-            self.load_data(rtu_name, substation)
-            # self.debug_print_dataframes()
-            self.merged_data = self.merge_data()
-            
-            if write_cache:
-                self.write_data_cache()
-        
-        self.merged_data = self.add_issue_report_flags(self.merged_data)
-
-        self.generate_defect_report(self.merged_data)
-
-        # self.generate_mk2a_card_report()
-
-        self.generate_statistics(self.merged_data)
-
+    def generate_rtu_report(self, merged_data: pd.DataFrame, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         # Get list of RTUs in the filtered data
         rtus = self.merged_data['RTU'].unique()
         print(f"{len(rtus)} RTUs in the filtered data for the report")
         if (len(rtus) == 0):
             return False
-
+        
         # We will create a report for each RTU in the filtered data
         reports = []
         for rtu in rtus:
@@ -991,9 +966,44 @@ class RTUReportGenerator:
         print(f"Report generated successfully: {output_path}")
 
 
+
+    ''' ================================
+        Generate the report
+        ================================ '''
+    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None, write_cache: bool = False, read_cache: bool = False, report_names: Optional[List[str]] = None):
+        """Generate report for specified RTU or substation."""
+        if not self.validate_data_files():
+            sys.exit(1)
+        
+        if read_cache:
+            self.read_data_cache(rtu_name, substation)
+        
+        if not read_cache or self.merged_data.shape[0] == 0:
+            self.load_data(rtu_name, substation)
+            # self.debug_print_dataframes()
+            self.merged_data = self.merge_data()
+            
+            if write_cache:
+                self.write_data_cache()
+        
+        self.merged_data = self.add_issue_report_flags(self.merged_data)
+
+        if 'defect_report' in report_names:
+            self.generate_defect_report(self.merged_data)
+
+        if 'mk2a_card_report' in report_names:
+            self.generate_mk2a_card_report()
+
+        if 'statistics' in report_names:
+            self.generate_statistics(self.merged_data)
+
+        if 'rtu_report' in report_names:
+            self.generate_rtu_report(self.merged_data, rtu_name, substation)
+
+
     def generate_defect_report(self, merged_data: pd.DataFrame):
         """Generate a defect report for the merged data."""
-        generate_defect_report_in_excel(merged_data, self.output_dir )
+        generate_defect_report_in_excel(merged_data, self.output_dir)
         return
 
     
@@ -1037,6 +1047,13 @@ class RTUReportGenerator:
 
 def main():
     import argparse
+
+    valid_report_names = [
+        'defect_report',
+        'mk2a_card_report',
+        'statistics',
+        'rtu_report'
+    ]
     
     parser = argparse.ArgumentParser(description="Generate RTU reports from various source files")
     parser.add_argument("--rtu", help="Generate report for specific RTU")
@@ -1045,15 +1062,33 @@ def main():
     parser.add_argument("--readcache", action="store_true", help="Read the data cache from the database")
     parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help="Directory containing source files")
     parser.add_argument("--config-dir", default=DEFAULT_CONFIG_DIR, help="Directory containing config files")
+    parser.add_argument("--report-name", help="comma separated list of report names to generate")
     
     args = parser.parse_args()
 
     if args.writecache and args.readcache:
         print("Error: --writecache and --readcache cannot both be True")
         sys.exit(1)
+
+    if args.report_name:
+        if args.report_name == 'all':
+            report_names = valid_report_names
+        else:
+            report_names = args.report_name.split(',')
+        for report_name in report_names:
+            if report_name not in valid_report_names:
+                print(f"Error: Invalid report name: {report_name}")
+                sys.exit(1)
+    else:
+        report_names = None
+        print(f"No report names provided, use --report-name to specify which reports to generate from the following list:")
+        for report_name in valid_report_names:
+            print(f"  {report_name}")
+        sys.exit(1)
+
     
     generator = RTUReportGenerator(args.config_dir + '/' + CONFIG_FILE, args.data_dir, args.writecache, args.readcache)
-    generator.generate_report(args.rtu, args.substation, args.writecache, args.readcache)
+    generator.generate_report(args.rtu, args.substation, args.writecache, args.readcache, report_names)
 
 if __name__ == "__main__":
     main() 
