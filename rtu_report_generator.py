@@ -853,34 +853,108 @@ class RTUReportGenerator:
     
     def generate_mk2a_card_report(self):
         """Generate the MK2A card report."""
+        # We need the eterra exports to exist to run this report
+        if self.eterra_analog_export is None or self.eterra_point_export is None:
+            self.load_eterra_export()
+
+        
+
         # First get a list of the unique RTU Name/Card pairs for all MK2A cards
         mk2a_cards = self.merged_data[self.merged_data['Protocol'] == 'MK2A'].copy()
         mk2a_cards = mk2a_cards[['RTU', 'Card']].drop_duplicates()
-        # print(f"Found {mk2a_cards.shape[0]} unique RTU/Card pairs for MK2A cards")
-
-        # Now check that every RTU/Card pair has at least one corresponding record in the merged_data dataframe, PO section, that is a good config health
-        # print("="*80)
-        # print(f"Checking {mk2a_cards.shape[0]} RTU/Card pairs for MK2A cards using point data")
-        # for index, row in mk2a_cards.iterrows():
-        #     rtu = row['RTU']
-        #     card = row['Card']
-            
-        #     if card in ['251', '252', '253', '254' '119', '']:
-        #         # ignore these cards as they are internal to the RTU
-        #         continue
-        #     valid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] == 'GOOD')]
-
-        #     if valid_rows_for_card.shape[0] == 0:
-        #         print(f"RTU/Card pair {rtu}/{card} has no matching record in PowerOn with a good config health")
-
-        # print("="*80)
-        # print("")
-
         print("="*80)
         print(f"Checking {mk2a_cards.shape[0]} RTU/Card pairs for MK2A cards using card tab")
+
+        def getCardType(card: int) -> str:
+            try:
+                card = int(card)
+            except:
+                return 'UNKNOWN'
+            if card >= 100 and card <= 118:
+                return 'DIGITAL'
+            if card >= 119 and card <= 135:
+                return 'INTERNAL'
+            if card >= 136 and card <= 169:
+                return 'ANALOG' # includes Taps 
+            if card > 169 and card <= 255:
+                return 'INTERNAL'
+            return 'UNKNOWN'
+        
+        def getAnalogPoints(rtu: str, card: str) -> list:
+            # get the analog points for the given rtu and card
+            return self.eterra_analog_export[(self.eterra_analog_export['RTU'] == rtu) & (self.eterra_analog_export['Card'] == card)]
+        
+        def getDigitalPoints(rtu: str, card: str) -> list:
+            # get the digital points for the given rtu and card
+            return self.eterra_point_export[(self.eterra_point_export['RTU'] == rtu) & (self.eterra_point_export['Card'] == card)]
+        
+        def geteTerraPoints(rtu: str, card: str) -> list:
+            cardType = getCardType(card)
+            if cardType == 'ANALOG':
+                return getAnalogPoints(rtu, card)
+            if cardType == 'DIGITAL':
+                return getDigitalPoints(rtu, card)
+            return []
+
+
         # Load the eTerra card tab
+        # create a class to hold the card tab data
+        class CardTabData:
+            def __init__(self, rtu, card, protocol, card_type):
+                self.rtu = rtu
+                self.card = card
+                self.protocol = protocol
+                self.card_type = card_type
+                self.eterra_points = []
+                self.poweron_points = []
+                self.poweron_valid_points = []
+                self.poweron_invalid_points = []
+
         result_list = []
         self.eterra_card_tab = read_habdde_card_tab_into_df(self.data_dir / self.required_files['eterra_export'])
+
+        # populate the card tab data
+        card_tab_data_list = []
+        for index, row in self.eterra_card_tab.iterrows():
+            protocol = row['protocol']
+            if protocol != 'MK2A':
+                continue
+            card_type = row['CASDU']
+            if card_type != '1':
+                continue
+            card = row['card']
+            card_type = getCardType(card)
+            if card_type == 'UNKNOWN' or card_type == 'INTERNAL':
+                continue
+
+            rtu = row['rtu']
+            card_tab_data = CardTabData(rtu, card, protocol, card_type)
+            eTerraPoints = geteTerraPoints(rtu, card)
+            for _, point in eTerraPoints.iterrows():
+                card_tab_data.eterra_points.append(point)
+            valid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] == 'GOOD')]
+            invalid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] != 'GOOD')]
+            for index, row in valid_rows_for_card.iterrows():
+                card_tab_data.poweron_points.append(row)
+                card_tab_data.poweron_valid_points.append(row)
+            for index, row in invalid_rows_for_card.iterrows():
+                card_tab_data.poweron_points.append(row)
+                card_tab_data.poweron_invalid_points.append(row)
+
+            card_tab_data_list.append(card_tab_data)
+
+        # now go through each card in the card_tab_list and print out the data in this format to csvfile mk2a_full_card_report.csv:
+        # RTU, Card, Protocol, Card Type, eTerra Points, PowerOn Points, PowerOn Valid Points, PowerOn Invalid Points
+        with open(self.output_dir / 'mk2a_full_card_report.csv', 'w') as f:
+            print("RTU, Card, Protocol, Card Type, eTerra Points, PowerOn Points, PowerOn Valid Points, PowerOn Invalid Points", file=f)
+            for card_tab_data in card_tab_data_list:
+                print(f"{card_tab_data.rtu}, {card_tab_data.card}, {card_tab_data.protocol}, {card_tab_data.card_type}, {len(card_tab_data.eterra_points)}, {len(card_tab_data.poweron_points)}, {len(card_tab_data.poweron_valid_points)}, {len(card_tab_data.poweron_invalid_points)}", file=f)
+
+        print("="*80)
+        print("")
+        print(f"Found {len(card_tab_data_list)} Mk2a RTU/Card pairs (DIGITAL or ANALOG). See {self.output_dir / 'mk2a_full_card_report.csv'} for details.")
+
+
         # go through each card in the eTerra card tab, and check if a corresponding record exists in the merged_data dataframe, PO section, that is a good config health
         for index, row in self.eterra_card_tab.iterrows():
             rtu = row['rtu']
@@ -897,7 +971,7 @@ class RTUReportGenerator:
                 continue
             valid_rows_for_card = self.merged_data[(self.merged_data['PO_RTU'] == (rtu + '_RTU')) & (self.merged_data['PO_Card'] == card) & (self.merged_data['ConfigHealth'] == 'GOOD')]
             if valid_rows_for_card.shape[0] == 0:
-                print(f"RTU/Card pair {rtu}/{card} has no matching record in PowerOn with a good config health")
+                #print(f"RTU/Card pair {rtu}/{card} has no matching record in PowerOn with a good config health")
                 result_list.append(f"{rtu},{card}")
         print("="*80)
         print("")
@@ -907,6 +981,8 @@ class RTUReportGenerator:
             f.write('RTU,Card\n')
             for result in result_list:
                 f.write(f"{result}\n")
+        print(f"Found {len(result_list)} RTU/Card pairs with no matching record in PowerOn with a good config health. See {self.output_dir / 'mk2a_missing_card_report.csv'} for details.")
+
         
     def generate_statistics(self, merged_data: pd.DataFrame):
         """Generate statistics for the merged data."""
@@ -986,9 +1062,9 @@ class RTUReportGenerator:
             if write_cache:
                 self.write_data_cache()
         
-        self.merged_data = self.add_issue_report_flags(self.merged_data)
-
+        
         if 'defect_report' in report_names:
+            self.merged_data = self.add_issue_report_flags(self.merged_data)
             self.generate_defect_report(self.merged_data)
 
         if 'mk2a_card_report' in report_names:
