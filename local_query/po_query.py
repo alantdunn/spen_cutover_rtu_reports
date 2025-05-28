@@ -1,5 +1,5 @@
 import sqlite3
-poweron_db = "/Users/alan/Documents/Databases/export_of_dl12_after_scada_load_and_commissioning_and_pfl.db"
+poweron_db = "/Users/alan/Documents/Databases/export_of_dl12_after_scada_load_and_commissioning_and_pfl3.db"
 
 def getComponentIdFromAlias(alias):
     if alias is None or alias == "":
