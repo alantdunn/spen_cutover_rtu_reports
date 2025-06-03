@@ -307,6 +307,23 @@ REPORT_CONFIGS = {
             ],
         'combine_with': 'and'
     },
+        'Report17': {
+        'name': 'eTerra Alias Comp needs removed as ICCP version is linked', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('ALARM', '==', False),
+            ('eTerraAliasExistsInPO', '==', 1),
+            ('ICCPAliasExists', '==', 1),
+            ('ICCPAliasLinkedToSCADA', '==', 1),
+            ('GridIncomer', '==', 0),
+            ('RTUComms', '==', False),
+            ],
+        'combine_with': 'and'
+    },
     'ReportANY': {
         'name': 'Any Defect', 
         'debug': False,

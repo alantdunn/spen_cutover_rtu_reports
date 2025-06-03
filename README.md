@@ -48,11 +48,16 @@ The report will be formatted to be clear and easy to read and filter the data as
 `python rtu_report_generator.py --writecache`
 `python rtu_report_generator.py --readcache`
 
+python rtu_report_generator.py --report-name defect_report --readcache
+python rtu_report_generator.py --report-name mk2a_card_report --readcache
+
 ## Copy exisiting comments onto newly generated sheet
 
 `python utils/copy_comments_from_defect_report.py --oldfile rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx --newfile reports/defect_report_all.xlsx`
 
 `python utils/copy_comments_from_defect_report.py --oldfile rtu_report_data/from_spen/defect_report_all-14-MAY-2025-archive.xlsx --newfile reports/defect_report_all-22-MAY-2025.xlsx`
+
+`python copy_comments_from_defect_report.py --oldfile ../rtu_report_data/from_spen/defect_report_all-26-MAY-2025-archive.xlsx --newfile ../reports/defect_report_all.xlsx`
 
 /Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025.xlsx
 /Users/alan/Documents/Projects/spen_cutover_rtu_reports/rtu_report_data/from_spen/defect_report_all-05-MAY-2025-archive.xlsx

@@ -667,3 +667,39 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
                 eterra_export.at[_, 'Ctrl1Name'] = 'SETPOINT'
 
     return eterra_export
+
+def set_grid_incomer_flag_based_on_eterra_alias(eterra_export: pd.DataFrame) -> pd.DataFrame:
+    """Set the GridIncomer flag based on the eTerra Alias.
+    
+    To consider a component being part of Grid Incomers the following conditions have to be met:
+
+    the second part of the eTerra Alias to include one of the following text: 
+    '033_CB', '025_CB', '011_CB','033_IS'
+    the third part of the eTerra Alias to include one of the following text: 
+    'GRID', 'SG', 'GS', 'T4', '2L5', '3L5'
+    """
+
+    # strip the eTerraAlias of any trailing spaces
+    eterra_export['eTerraAlias'] = eterra_export['eTerraAlias'].str.strip()
+
+    # create a mask for the points that are grid incomers
+    grid_incomer_mask = eterra_export['eTerraAlias'].str.contains(r'^.*033_CB.*GRID.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*025_CB.*GRID.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*011_CB.*GRID.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_IS.*GRID.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_CB.*SG.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*025_CB.*SG.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*011_CB.*SG.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_IS.*SG.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_IS.*GS.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*025_CB.*GS.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*011_CB.*GS.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_IS.*GS.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_IS.*T4.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_CB.*2L5.*$') | \
+                        eterra_export['eTerraAlias'].str.contains(r'^.*033_CB.*3L5.*$')
+
+    # Set the GridIncomer flag based on the mask
+    eterra_export['GridIncomer'] = grid_incomer_mask
+
+    return eterra_export

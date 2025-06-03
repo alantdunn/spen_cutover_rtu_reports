@@ -19,7 +19,8 @@ from data_import.import_habdde import (
     derive_rtu_addresses_and_protocols_from_eterra_export,
     import_habdde_export_control_tab,
     import_habdde_export_setpoint_control_tab,
-    add_control_info_to_eterra_export
+    add_control_info_to_eterra_export,
+    set_grid_incomer_flag_based_on_eterra_alias
 )
 from data_import.import_poweron_rtu_report import clean_all_rtus
 from data_import.import_alarm_compare import clean_compare_alarms
@@ -128,7 +129,9 @@ class RTUReportGenerator:
             'iccp_compare': "eterra_poweron_iccp_compare_report.xlsx",
             'compare_alarms': "Comparison_eTerra_dl11_all_po_dl11_4.xlsx",
             'controls_db': "controls.db",
-            'alarm_mismatch_manual_actions': "AlarmMismatchManualActions.xlsx"
+            'alarm_mismatch_manual_actions': "AlarmMismatchManualActions.xlsx",
+            'alarm_token_analysis': "dl12_5_3_t3_t5_analysis_v3.xlsm",
+            'check_alarms_spreadsheet_with_po_path': "checkEterraAlarms_dl12_after_scada_load_and_commissioning.xlsx"
         }
             
         if Path(config_path).exists():
@@ -180,7 +183,10 @@ class RTUReportGenerator:
         self.manual_commissioning = None
         self.merged_data = None
         self.alarm_mismatch_manual_actions = None
+        self.alarm_token_analysis = None
+        self.check_alarms_spreadsheet_with_po = None
 
+    ''' ********** validate_data_files ********** '''
     def validate_data_files(self) -> bool:
         """Check if all required files exist in the data directory."""
         missing_files = []
@@ -193,6 +199,7 @@ class RTUReportGenerator:
             return False
         return True
     
+    ''' ********** write_data_cache ********** '''
     def write_data_cache(self):
         """Write the data cache to the database."""
         # write the merged data to the database
@@ -205,6 +212,7 @@ class RTUReportGenerator:
         self.merged_data.to_sql('merged_data', conn, if_exists='replace', index=False)
         conn.close()
 
+    ''' ********** read_data_cache ********** '''
     def read_data_cache(self, rtu_name: Optional[str] = None, substation: Optional[str] = None):
         """Read the data cache from the database."""
         # read the merged data from the database
@@ -220,6 +228,7 @@ class RTUReportGenerator:
             self.merged_data = self.merged_data[self.merged_data['Sub'] == substation]
         print(f"Filtered data to {self.merged_data.shape[0]} rows")
 
+    ''' ********** load_eterra_export ********** '''
     def load_eterra_export(self):
         print(f" :arrow_right: Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
@@ -236,6 +245,7 @@ class RTUReportGenerator:
         print(f" :arrow_right: Loading control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
+    ''' ********** add_no_input_controls ********** '''
     def add_no_input_controls(self):
         # Look for any controls that are not in the point export, then look for these as dummy points
         print(f" :arrow_right: Looking for controls that are not in the point export ... ", end="")
@@ -281,13 +291,37 @@ class RTUReportGenerator:
         # if self.debug_dir:
         #     no_input_controls_duplicates.to_csv(f"{self.debug_dir}/no_input_controls_duplicates.csv", index=False)
 
+    ''' ********** load_eterra_setpoint_control_export ********** '''
     def load_eterra_setpoint_control_export(self):
         print(f" :arrow_right: Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
+    ''' ********** load_eterra_card_tab ********** '''
     def load_eterra_card_tab(self):
         print(f" :arrow_right: Loading card tab from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_card_tab = read_habdde_card_tab_into_df(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
+
+    ''' ********** load_alarm_token_analysis ********** '''
+    def load_alarm_token_analysis(self):
+        file_path = self.data_dir / self.required_files['alarm_token_analysis']
+        if not file_path.exists():
+            print(f" :warning: Warning: alarm token analysis file does not exist: {file_path}")
+            return
+        print(f" :arrow_right: Loading alarm token analysis from {file_path}")
+        self.alarm_token_analysis = pd.read_excel(file_path, sheet_name='Sheet1')
+        if self.debug_dir:
+            self.alarm_token_analysis.to_csv(f"{self.debug_dir}/alarm_token_analysis.csv", index=False)
+
+    ''' ********** load_check_alarms_spreadsheet_with_po ********** '''
+    def load_check_alarms_spreadsheet_with_po(self):
+        file_path = self.data_dir / self.required_files['check_alarms_spreadsheet_with_po_path']
+        if not file_path.exists():
+            print(f" :warning: Warning: check alarms spreadsheet with PO file does not exist: {file_path}")
+            return
+        print(f" :arrow_right: Loading check alarms spreadsheet with PO from {file_path}")
+        self.check_alarms_spreadsheet_with_po = pd.read_excel(file_path, sheet_name='sheet1')
+        if self.debug_dir:
+            self.check_alarms_spreadsheet_with_po.to_csv(f"{self.debug_dir}/check_alarms_spreadsheet_with_po.csv", index=False)
 
     def create_base_eterra_export_by_combining_point_and_analog_exports(self):
         # Get just the common columns from point and analog and concatenate them together, sort by GenericPointAddress
@@ -316,6 +350,11 @@ class RTUReportGenerator:
         eterra_analogs_common_cols = self.eterra_analog_export[common_columns]
         self.eterra_export = pd.concat([eterra_points_common_cols, eterra_analogs_common_cols], ignore_index=True)
         self.eterra_export = self.eterra_export.sort_values(by='GenericPointAddress')
+
+        ##### Re Calculate GridIncomer - we have updated the definition of GridIncomer in the GridIncomer function#####
+        # add a column to the habdde dataframes that is the GridIncomer - riules in the GridIncomer function
+        self.eterra_export = set_grid_incomer_flag_based_on_eterra_alias(self.eterra_export)
+
         if self.debug_dir:
             self.eterra_export.to_csv(f"{self.debug_dir}/eterra_export.csv", index=False)
 
@@ -408,6 +447,8 @@ class RTUReportGenerator:
             self.load_manual_commissioning_results()
             self.add_control_info_to_input_rows_in_eterra_export()
             self.load_alarm_mismatch_manual_actions()
+            self.load_alarm_token_analysis()
+            self.load_check_alarms_spreadsheet_with_po()
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
@@ -425,6 +466,8 @@ class RTUReportGenerator:
         merged = self.merge_compare_alarms_data(merged)
         merged = self.merge_control_data(merged)
         merged = self.merge_alarm_mismatch_manual_actions(merged)
+        merged = self.add_alarm_token_analysis(merged)
+        merged = self.add_check_alarms_spreadsheet_with_po(merged)
         merged = self.add_derived_columns(merged)
 
         if self.debug_dir:
@@ -482,6 +525,14 @@ class RTUReportGenerator:
         merged['ICCPAliasExists'] = merged.apply(lambda row: get_poweron_alias_exists(row['ICCP_ALIAS']), axis=1)
         print(f"  🧠 Adding ICCPAliasLinkedToSCADA column...")
         merged['ICCPAliasLinkedToSCADA'] = merged.apply(lambda row: get_poweron_alias_linked_to_scada(row['ICCP_ALIAS']), axis=1)
+
+        # Add a column that is True if ALRM is in the eTerraKey and False if not
+        print(f"  🧠 Adding ALARM column...")
+        merged['ALARM'] = merged.apply(lambda row: True if 'ALRM' in row['eTerraKey'] else False, axis=1)
+
+        # Add a column that is the second field of the LocationFull field (delimited by ':') if this field exists, otherwise set to ''
+        print(f"  🧠 Adding TopLocation column...")
+        merged['TopLocation'] = merged.apply(lambda row: row['LocationFull'].split(':')[1] if pd.notna(row['LocationFull']) and isinstance(row['LocationFull'], str) else '', axis=1)
 
         return merged
 
@@ -801,6 +852,53 @@ class RTUReportGenerator:
 
         print(f" ✅ Added control info to merged data on {merged.shape[0]} rows")
         return merged
+    
+    def add_alarm_token_analysis(self, merged: pd.DataFrame) -> pd.DataFrame:
+        if self.alarm_token_analysis is None:
+            print(" :warning: Warning: alarm token analysis not available to add to merged data")
+            return merged
+        
+        print(" 🧠 Adding alarm token analysis to merged data...")
+
+        # the alarm_token_analysis has 3 columns we want, so get a copy with just the 3 columns
+        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T3 Analysis', 'T5 Analysis']]
+        # sort the subset by eTerra Alias, T3 Analysis, T5 Analysis
+        alarm_token_analysis_subset = alarm_token_analysis_subset.sort_values(by=['eTerra Alias', 'T3 Analysis', 'T5 Analysis'], na_position='last')
+        # drop any duplicates, keep the first one
+        alarm_token_analysis_subset = alarm_token_analysis_subset.drop_duplicates(subset=['eTerra Alias'], keep='first')
+
+        merged = pd.merge(
+            merged,
+            alarm_token_analysis_subset,
+            on=['eTerra Alias'],
+            how='left'
+        )
+        print(f" ✅ Added alarm token analysis to merged data on {merged.shape[0]} rows")
+        return merged
+
+    def add_check_alarms_spreadsheet_with_po(self, merged: pd.DataFrame) -> pd.DataFrame:
+        if self.check_alarms_spreadsheet_with_po is None:
+            print(" :warning: Warning: check alarms spreadsheet with PO not available to add to merged data")
+            return merged
+        
+        print(" 🧠 Adding check alarms spreadsheet with PO to merged data...")
+        
+        # the check_alarms_spreadsheet_with_po has 2 columns we want, so get a copy with just the 2 columns
+        check_alarms_spreadsheet_with_po_subset = self.check_alarms_spreadsheet_with_po[['Alias', 'Location', 'LocationFull']]
+        # sort the subset by Alias, Location, LocationFull
+        check_alarms_spreadsheet_with_po_subset = check_alarms_spreadsheet_with_po_subset.sort_values(by=['Alias', 'Location', 'LocationFull'], na_position='last')
+        # drop any duplicates, keep the first one
+        check_alarms_spreadsheet_with_po_subset = check_alarms_spreadsheet_with_po_subset.drop_duplicates(subset=['Alias'], keep='first')
+
+        merged = pd.merge(
+            merged,
+            check_alarms_spreadsheet_with_po_subset,
+            left_on=['eTerra Alias'],
+            right_on=['Alias'],
+            how='left'
+        )
+        print(f" ✅ Added check alarms spreadsheet with PO to merged data on {merged.shape[0]} rows")
+        return merged
 
     def add_issue_report_flags(self, merged_data: pd.DataFrame) -> pd.DataFrame:
         """Add issue report flags to the merged data."""
@@ -843,6 +941,7 @@ class RTUReportGenerator:
             'Report14',
             'Report15',
             'Report16',
+            'Report17',
             'ReportANY'
         ]
 
