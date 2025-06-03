@@ -28,8 +28,10 @@ from data_import.import_controls_auto_test_report import clean_controls_test
 from data_import.import_manual_commissioning_data import clean_manual_commissioning
 from data_import.import_habdde_compare import clean_habdde_compare
 from report_generation import (
+    create_style_guide,
     create_points_section,
     save_reports,
+    generate_report_in_excel,
     generate_defect_report_in_excel
 )
 from defect_reports import (
@@ -91,6 +93,7 @@ def load_config(config_path=CONFIG_FILE):
 
 class RTUReportGenerator:
     def __init__(self, config_path=CONFIG_FILE, data_dir="", write_cache=False, read_cache=False):
+        self.config_path = Path(config_path).parent
         self.config = load_config(config_path)
         if not self.config.has_section('Paths'):
             raise ValueError("Config file missing required 'Paths' section")
@@ -122,6 +125,7 @@ class RTUReportGenerator:
         
         # Default file names that will be overridden by config
         self.required_files = {
+            'report_definitions': "ReportDefinitions.xlsx",
             'eterra_export': "habdde_eTerra_export.xlsx",
             'habdde_compare': "habdde_compare_report.xlsx", 
             'all_rtus': "all_rtus.csv",
@@ -166,6 +170,7 @@ class RTUReportGenerator:
 
         
         # Initialize dataframes
+        self.report_definitions = None
         self.eterra_full_point_export = None
         self.eterra_point_export = None
         self.eterra_dummy_point_export = None
@@ -192,8 +197,10 @@ class RTUReportGenerator:
         missing_files = []
         for file_key, filename in self.required_files.items():
             if not (self.data_dir / filename).exists():
-                missing_files.append(filename)
-        
+                # Special case : report_definitions is in the config dir
+                if filename != self.required_files['report_definitions']:
+                    missing_files.append(filename)
+
         if missing_files:
             print(f"Error: Missing required files: {', '.join(missing_files)}")
             return False
@@ -221,12 +228,40 @@ class RTUReportGenerator:
         self.merged_data = pd.read_sql_query('SELECT * FROM merged_data', conn)
         conn.close()
         print(f"Read {self.merged_data.shape[0]} rows from data cache")
+
+        # if the merged data is empty, return
+        if self.merged_data.empty or self.merged_data.shape[0] == 0:
+            print("No merged data found in data cache")
+            return
+        
+        # force the type of some columns to be int or bool
+        bool_columns = ['PowerOn Alias Exists','Report1', 'Report2', 'Report3', 'Report4', 'Report5', 'Report6', 'Report7', 'Report8', 'Report9', 'Report10', 'Report11', 'Report12', 'Report13', 'Report14', 'Report15', 'Report16', 'Report17', 'ReportANY','CompAlarmAlarmZoneMatch']
+        for column in bool_columns:
+            # Fill NA/empty values with False before converting to bool
+            self.merged_data[column] = self.merged_data[column].fillna(False)
+            self.merged_data[column] = self.merged_data[column].replace('', False)
+            self.merged_data[column] = self.merged_data[column].astype(bool)
+
+        # int_columns = ['Controllable','Alarm0', 'Alarm1', 'Alarm2', 'Alarm3', 'Ctrl1', 'Ctrl1V', 'Ctrl1C', 'Ctrl2', 'Ctrl2V', 'Ctrl2C']
+        # for column in int_columns:
+        #     # Fill NA/empty values with 0 before converting to int
+        #     self.merged_data[column] = self.merged_data[column].fillna(0)
+        #     self.merged_data[column] = self.merged_data[column].replace('', 0)
+        #     self.merged_data[column] = self.merged_data[column].astype(int)
+
         # filter the data using the rtu_name and substation if they are provided
         if rtu_name:
             self.merged_data = self.merged_data[self.merged_data['RTU'] == rtu_name]
         if substation:
             self.merged_data = self.merged_data[self.merged_data['Sub'] == substation]
         print(f"Filtered data to {self.merged_data.shape[0]} rows")
+
+
+    ''' ********** load_report_definitions ********** '''
+    def load_report_definitions(self):
+        report_definitions_file = self.config_path / self.required_files['report_definitions']
+        print(f" :arrow_right: Loading report definitions from {report_definitions_file}")
+        self.report_definitions = pd.read_excel(report_definitions_file, sheet_name=None)
 
     ''' ********** load_eterra_export ********** '''
     def load_eterra_export(self):
@@ -469,6 +504,7 @@ class RTUReportGenerator:
         merged = self.add_alarm_token_analysis(merged)
         merged = self.add_check_alarms_spreadsheet_with_po(merged)
         merged = self.add_derived_columns(merged)
+        merged = self.add_issue_report_flags(merged)
 
         if self.debug_dir:
             print(f" :arrow_right: Writing merged data to {self.debug_dir}/merged.csv")
@@ -533,6 +569,19 @@ class RTUReportGenerator:
         # Add a column that is the second field of the LocationFull field (delimited by ':') if this field exists, otherwise set to ''
         print(f"  🧠 Adding TopLocation column...")
         merged['TopLocation'] = merged.apply(lambda row: row['LocationFull'].split(':')[1] if pd.notna(row['LocationFull']) and isinstance(row['LocationFull'], str) else '', axis=1)
+
+        print(f"  🧠 Adding Alarm status columns...")
+        # Derive the alarm status cols (for alarm number 0..3)
+        for i in range(4):
+            merged[f'Alarm{i}'] = merged[f'Alarm{i}_MessageMatch'].apply(lambda x: 1 if x == True else 0 if x == False else '')
+
+        print(f"  🧠 Adding Control status columns...")
+        # Derive the ctrl status cols (for ctrl number 1..2)
+        for i in range(1,3):
+            merged[f'Ctrl{i}'] = merged.apply(lambda row: 1 if row[f'Ctrl{i}TestResult'] == 'OK' else 0 if row[f'Ctrl{i}TestResult'] == 'Fail' else '', axis=1)
+            merged[f'Ctrl{i}V'] = merged.apply(lambda row: 1 if row[f'Ctrl{i}VisualCheckResult'] == 'OK' else 0 if row[f'Ctrl{i}VisualCheckResult'] == 'Fail' else '', axis=1)
+            merged[f'Ctrl{i}C'] = merged.apply(lambda row: 1 if row[f'Ctrl{i}ControlSentResult'] == 'OK' else 0 if row[f'Ctrl{i}ControlSentResult'] == 'Fail' else '', axis=1)
+
 
         return merged
 
@@ -1145,7 +1194,7 @@ class RTUReportGenerator:
     ''' ================================
         Generate the report
         ================================ '''
-    def generate_report(self, rtu_name: Optional[str] = None, substation: Optional[str] = None, write_cache: bool = False, read_cache: bool = False, report_names: Optional[List[str]] = None):
+    def generate_reports(self, rtu_name: Optional[str] = None, substation: Optional[str] = None, write_cache: bool = False, read_cache: bool = False, report_names: Optional[List[str]] = None):
         """Generate report for specified RTU or substation."""
         if not self.validate_data_files():
             sys.exit(1)
@@ -1161,25 +1210,62 @@ class RTUReportGenerator:
             if write_cache:
                 self.write_data_cache()
         
-        
+        self.load_report_definitions()
+
+        if 'all_defined_reports' in report_names:
+            self.generate_all_defined_reports()
+            # remove all_defined_reports from the report_names list
+            report_names.remove('all_defined_reports')
+
         if 'defect_report' in report_names:
-            self.merged_data = self.add_issue_report_flags(self.merged_data)
-            self.generate_defect_report(self.merged_data)
+            generate_defect_report_in_excel(self.merged_data, self.output_dir)
+            report_names.remove('defect_report')
 
         if 'mk2a_card_report' in report_names:
             self.generate_mk2a_card_report()
+            report_names.remove('mk2a_card_report')
 
         if 'statistics' in report_names:
             self.generate_statistics(self.merged_data)
+            report_names.remove('statistics')
 
         if 'rtu_report' in report_names:
             self.generate_rtu_report(self.merged_data, rtu_name, substation)
+            report_names.remove('rtu_report')
+
+        if len(report_names) > 0:
+            # look for the report in the report_definitions dataframe
+            for report_name in report_names:
+                if report_name in self.report_definitions:
+                    report_definition = {
+                        'name': report_name,
+                        'worksheet_name': report_name,
+                        'columns': self.report_definitions[report_name].to_dict('records')
+                    }
+                    generate_report_in_excel(self.merged_data, report_definition, Path(self.output_dir))
+                    report_names.remove(report_name)
+
+            if len(report_names) > 0:
+                print(f"Error: Invalid report name: {report_names}")
+                sys.exit(1)
 
 
-    def generate_defect_report(self, merged_data: pd.DataFrame):
-        """Generate a defect report for the merged data."""
-        generate_defect_report_in_excel(merged_data, self.output_dir)
-        return
+    # def generate_defect_report(self, merged_data: pd.DataFrame):
+    #     """Generate a defect report for the merged data."""
+    #     generate_defect_report_in_excel(merged_data, self.output_dir)
+    #     return
+    
+    def generate_all_defined_reports(self):
+        """Generate all reports."""
+        # try to generate each report in the report_definitions dataframe
+        print(f"  🧠 Generating all defined reports...")
+        for report_name, report_columns in self.report_definitions.items():
+            report_definition = {
+                'name': report_name,
+                'worksheet_name': report_name,
+                'columns': report_columns.to_dict('records')
+            }
+            generate_report_in_excel(self.merged_data, report_definition)
 
     
     def debug_print_dataframes(self):
@@ -1227,7 +1313,9 @@ def main():
         'defect_report',
         'mk2a_card_report',
         'statistics',
-        'rtu_report'
+        'rtu_report',
+        'defect_report_all',
+        'defect_report2'
     ]
     
     parser = argparse.ArgumentParser(description="Generate RTU reports from various source files")
@@ -1261,9 +1349,12 @@ def main():
             print(f"  {report_name}")
         sys.exit(1)
 
-    
+    # create the style guide
+    # create_style_guide()
+    # sys.exit(0)
+
     generator = RTUReportGenerator(args.config_dir + '/' + CONFIG_FILE, args.data_dir, args.writecache, args.readcache)
-    generator.generate_report(args.rtu, args.substation, args.writecache, args.readcache, report_names)
+    generator.generate_reports(args.rtu, args.substation, args.writecache, args.readcache, report_names)
 
 if __name__ == "__main__":
     main() 
