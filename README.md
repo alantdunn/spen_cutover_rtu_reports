@@ -48,10 +48,14 @@ The report will be formatted to be clear and easy to read and filter the data as
 `python rtu_report_generator.py --writecache`
 `python rtu_report_generator.py --readcache`
 
-python rtu_report_generator.py --report-name defect_report --readcache
-python rtu_report_generator.py --report-name mk2a_card_report --readcache
+`python rtu_report_generator.py --report-name defect_report --readcache`
+`python rtu_report_generator.py --report-name mk2a_card_report --readcache`
 
-python rtu_report_generator.py --report-name defect_report --readcache (to do the excel defined one)
+`python rtu_report_generator.py --report-name defect_report --readcache`
+
+*to do the excel defined one - check name of tab in ReportDefinitions.xlsx*
+
+`python rtu_report_generator.py --report-name defect_report_all --readcache`
 
 ## Copy exisiting comments onto newly generated sheet
 

@@ -10,6 +10,9 @@ from openpyxl.styles import Border, Side, PatternFill, Font, NamedStyle, Gradien
 
 # Define some openpyxl styles for the report
 STYLE_DEFINITIONS = {
+    'GreyItalic9': {
+        'font': Font(color='DDDDDD',size=9,italic=True)
+    },
     'GoodBadNA': {
         'fill': PatternFill(start_color='63EF45', end_color='63EF45', fill_type='solid'),
         'font': Font(color='63EF45')
@@ -236,7 +239,36 @@ def applyFontStyleToCell(cell, style):
 def applyFontSizeToCell(cell, size):
     if size is None or pd.isna(size):
         return
-    cell.font = openpyxl.styles.Font(size=size)
+        
+    try:
+        # Convert to float first to handle both string and numeric inputs
+        if isinstance(size, str):
+            # Remove any whitespace and handle comma decimal separators
+            size = size.strip().replace(',', '.')
+        
+        size_float = float(size)
+        # Font size must be positive
+        if size_float <= 0:
+            print(f"Invalid font size: {size}. Must be positive.")
+            return
+            
+        # Get existing font properties
+        current_font = cell.font
+        # Create new font with same properties but updated size
+        new_font = openpyxl.styles.Font(
+            name=current_font.name,
+            size=int(size_float),
+            bold=current_font.bold,
+            italic=current_font.italic,
+            strike=current_font.strike,
+            underline=current_font.underline,
+            color=current_font.color
+        )
+        cell.font = new_font
+        
+    except (ValueError, TypeError) as e:
+        print(f"Error converting font size '{size}' to number: {str(e)}")
+        return
 
 def applyFontColorToCell(cell, color):
     if color is None or pd.isna(color):
@@ -444,8 +476,10 @@ def generate_report_in_excel(df: pd.DataFrame, report_definition: dict, output_p
 
     for idx, col in enumerate(report_columns, 1):
         if col['dfCol'] not in df.columns:
-            print(f"Column {col['dfCol']} not found in df ... adding empty column")
+            print(f" ⚠️ Column {col['dfCol']} not found in df ... adding empty column")
             df[col['dfCol']] = ''  # Add empty column if missing
+        #else:
+            #print(f" ✅ Column {col['dfCol']} found in df: will be called {col['ColName']} in report.")
         # if the ColName is different from the dfCol, then rename the column
         if col['ColName'] != col['dfCol']:
             df = df.rename(columns={col['dfCol']: col['ColName']})
@@ -501,18 +535,18 @@ def generate_report_in_excel(df: pd.DataFrame, report_definition: dict, output_p
         # Apply the fill colors and set all borders to be black and 1pt thick
         for row in range(2, len(report_df) + 2):
                 cell = worksheet[f"{get_column_letter(idx)}{row}"]
-                if 'ColFill' in col and col['ColFill']:
+                if 'ColFill' in col and col['ColFill'] and pd.notna(col['ColFill']):
                     if isinstance(col['ColFill'], str):
                         cell.fill = openpyxl.styles.PatternFill(start_color=col['ColFill'], end_color=col['ColFill'], fill_type='solid')
-                if 'FontStyle' in col and col['FontStyle']: # if a formatting style is specified, apply it
+                if 'FontStyle' in col and col['FontStyle'] and pd.notna(col['FontStyle']): # if a formatting style is specified, apply it
                     applyFontStyleToCell(cell, col['FontStyle'])
-                if 'FontSize' in col and col['FontSize']:
+                if 'FontSize' in col and col['FontSize'] and pd.notna(col['FontSize']):
                     applyFontSizeToCell(cell, col['FontSize'])
-                if 'FontColor' in col and col['FontColor']:
+                if 'FontColor' in col and col['FontColor'] and pd.notna(col['FontColor']):
                     applyFontColorToCell(cell, col['FontColor'])
-                if 'FontName' in col and col['FontName']:
+                if 'FontName' in col and col['FontName'] and pd.notna(col['FontName']):
                     applyFontNameToCell(cell, col['FontName'])
-                if 'Style' in col and col['Style']:
+                if 'Style' in col and col['Style'] and pd.notna(col['Style']):
                     applyStyleToCell(cell, col['Style'])
 
                 cell.border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin', color='000000'),

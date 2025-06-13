@@ -51,45 +51,9 @@ DEFAULT_OUTPUT_DIR = 'reports'
 def load_config(config_path=CONFIG_FILE):
     config = configparser.ConfigParser()
     config.read(config_path)
+    print(f"Loaded config from {config_path}")
     return config
 
-# def add_control_stats_to_each_row(row):
-#     # Count how many controls are in the row - one for each of Ctrl1Name, Ctrl2Name that are not empty
-#     control_count = 0
-#     control_missing_links = 0
-#     controls_commissioned = 0
-#     for ctrlnum in range(1,3):
-#         ctrl_name = f'Ctrl{ctrlnum}Name'
-#         if row[ctrl_name] != '':
-#             control_count += 1
-#         if row[f'Ctrl{ctrlnum}ConfigHealth'] == '' or row[f'Ctrl{ctrlnum}ConfigHealth'].isna():
-#             control_missing_links += 1
-#         if row[f'Ctrl{ctrlnum}Commissioned'] == 'OK':
-#             controls_commissioned += 1
-
-#     # Add the control stats to the row
-#     row['Num Controls'] = control_count
-#     row['Num Controls Missing Links'] = control_missing_links
-#     row['Num Controls Commissioned'] = controls_commissioned
-#     row['Percent Controls Commissioned'] = (controls_commissioned / control_count) * 100 if control_count > 0 else 0
-#     return row
-
-# def add_alarm_stats_to_each_row(row):
-#     # Count how many alarms are in the row - one for each of Alarm1Name, Alarm2Name that are not empty
-#     alarm_count = 0
-#     alarms_matched = 0
-#     for alarmnum in range(0,4):
-#         alarm_name = f'Alarm{alarmnum}_eTerraMessage'
-#         if row[alarm_name] != '':
-#             alarm_count += 1
-#         if row[f'Alarm{alarmnum}_MessageMatch'] == True:
-#             alarms_matched += 1
-
-#     # Add the alarm stats to the row
-#     row['Num Alarms'] = alarm_count
-#     row['Num Alarms Matched'] = alarms_matched
-#     row['Percent Alarms Matched'] = (alarms_matched / alarm_count) * 100 if alarm_count > 0 else 0
-#     return row
 
 class RTUReportGenerator:
     def __init__(self, config_path=CONFIG_FILE, data_dir="", write_cache=False, read_cache=False):
@@ -235,7 +199,7 @@ class RTUReportGenerator:
             return
         
         # force the type of some columns to be int or bool
-        bool_columns = ['PowerOn Alias Exists','Report1', 'Report2', 'Report3', 'Report4', 'Report5', 'Report6', 'Report7', 'Report8', 'Report9', 'Report10', 'Report11', 'Report12', 'Report13', 'Report14', 'Report15', 'Report16', 'Report17', 'ReportANY','CompAlarmAlarmZoneMatch']
+        bool_columns = ['PowerOn Alias Exists','Report1', 'Report2', 'Report3', 'Report4', 'Report5', 'Report6', 'Report7', 'Report8', 'Report9', 'Report10', 'Report11', 'Report12', 'Report13', 'Report14', 'Report15', 'Report16', 'Report17', 'Report18', 'Report19', 'Report20', 'ReportANY','CompAlarmAlarmZoneMatch']
         for column in bool_columns:
             # Fill NA/empty values with False before converting to bool
             self.merged_data[column] = self.merged_data[column].fillna(False)
@@ -379,6 +343,10 @@ class RTUReportGenerator:
         common_columns.extend([col for col in potentially_common_columns if col in self.eterra_point_export.columns])
         # TODO: consider if the analog df might have different columns - I dont' think it should
         #common_columns.extend([col for col in potentially_common_columns if col in self.eterra_analog_export.columns])
+        # Add the Inverted column to the common_columns list, and create an empty column called Inverted in the analog_export
+        # Add Inverted column to common columns and create empty Inverted column in analog export
+        common_columns.append('Inverted')
+        self.eterra_analog_export['Inverted'] = 0
 
         print("Combining point and analog exports...")
         eterra_points_common_cols = self.eterra_point_export[common_columns]
@@ -991,6 +959,9 @@ class RTUReportGenerator:
             'Report15',
             'Report16',
             'Report17',
+            'Report18',
+            'Report19',
+            'Report20',
             'ReportANY'
         ]
 
@@ -1306,16 +1277,27 @@ class RTUReportGenerator:
             print(f"Error: {str(e)}")
             sys.exit(1)
 
+def get_dynamic_report_names(config_dir):
+    report_definitions_file = config_dir / 'ReportDefinitions.xlsx'
+    report_definitions = pd.read_excel(report_definitions_file, sheet_name=None)
+    report_names = report_definitions.keys()
+    # remove the 'Style Guide' and 'Available Columns' sheets
+    report_names = list(report_names)
+    if 'Style Guide' in report_names:
+        report_names.remove('Style Guide')
+    if 'Available Columns' in report_names:
+        report_names.remove('Available Columns')
+    return report_names
+
 def main():
     import argparse
 
+    # Setup the statically defined report names first
     valid_report_names = [
         'defect_report',
         'mk2a_card_report',
         'statistics',
         'rtu_report',
-        'defect_report_all',
-        'defect_report2'
     ]
     
     parser = argparse.ArgumentParser(description="Generate RTU reports from various source files")
@@ -1332,6 +1314,10 @@ def main():
     if args.writecache and args.readcache:
         print("Error: --writecache and --readcache cannot both be True")
         sys.exit(1)
+
+    # Get the dynamically defined report names from the config file
+    dynamic_report_names = get_dynamic_report_names(Path(args.config_dir))
+    valid_report_names.extend(dynamic_report_names)
 
     if args.report_name:
         if args.report_name == 'all':

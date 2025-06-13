@@ -324,6 +324,47 @@ REPORT_CONFIGS = {
             ],
         'combine_with': 'and'
     },
+    'Report18': {
+        'name': 'Inverted in PO but not in eTerra', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('POInterpretation', '==', 'EFEP_SP_INV_IT'),
+            ('Inverted', '==', '0')
+            ],
+        'combine_with': 'and'
+    },
+    'Report19': {
+        'name': 'Not linked to SCADA (Not Alarm)', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('ICCPAliasLinkedToSCADA', '==', 0),
+            ('eTerraAliasLinkedToSCADA', '==', 0),
+            ('ALARM', '==', False)
+            ],
+        'combine_with': 'and'
+    },
+    'Report20': {
+        'name': 'Potential Orphaned Symbol', 
+        'debug': False,
+        'required_cols': [],
+        'criteria': [
+            ('IGNORE_RTU', '==', False),
+            ('IGNORE_POINT', '==', False),
+            ('OLD_DATA', '==', False),
+            ('eTerraAliasExistsInPO', '==', 1),
+            ('ICCPAliasExists', '==', 1),
+            ('eTerraAlias','not contains', '_01/'),
+            ],
+        'combine_with': 'and'
+    },
     'ReportANY': {
         'name': 'Any Defect', 
         'debug': False,
@@ -522,6 +563,10 @@ def evaluate_criteria(df: pd.DataFrame, cols: str, op: str, val: any) -> pd.Seri
         return df[cols].isin(val)
     elif op == 'endswith':
         return df[cols].str.endswith(val)
+    elif op == 'contains':
+        return df[cols].str.contains(val)
+    elif op == 'not contains':
+        return ~df[cols].str.contains(val)
     elif op == 'notna_pair':
         col_pairs = cols.split('|')
         result = pd.Series(True, index=df.index)
