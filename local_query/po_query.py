@@ -1,7 +1,8 @@
 import sqlite3
-poweron_db = "/Users/alan/Documents/Databases/export_of_dl12_after_scada_load_and_commissioning_and_pfl3.db"
+# poweron_db = "/Users/alan/Documents/Databases/export_of_dl12_after_scada_load_and_commissioning_and_pfl3.db"
+# poweron_db = "/Users/alan/Documents/Databases/dataload13/03_after_scada_load_and_commissioning_after_pfl1/export_of_dl13_after_scada_load_and_commissioning_and_pfl1.db"
 
-def getComponentIdFromAlias(alias):
+def getComponentIdFromAlias(alias: str, poweron_db: str) -> str:
     if alias is None or alias == "":
         return ""
     # handle alias is nan
@@ -32,13 +33,13 @@ def getComponentIdFromAlias(alias):
     return result
 
 
-def check_if_component_alias_exists_in_poweron(component_alias: str) -> bool:
+def check_if_component_alias_exists_in_poweron(component_alias: str, poweron_db: str) -> bool:
     """
     Check if a component alias exists in the PowerOn database.
     """
 
     try:
-        id = getComponentIdFromAlias(component_alias)
+        id = getComponentIdFromAlias(component_alias, poweron_db)
         exists = 1 if id is not None and id != "" else 0
     except:
         print(f"Error in check_if_component_alias_exists_in_poweron for alias = '{component_alias}'")
@@ -47,7 +48,7 @@ def check_if_component_alias_exists_in_poweron(component_alias: str) -> bool:
     return exists
 
 
-def checkIfComponentAliasInScanPointComponents(component_alias):
+def checkIfComponentAliasInScanPointComponents(component_alias: str, poweron_db: str) -> bool:
     if component_alias is None or component_alias == "":
         return False
     # handle alias is nan

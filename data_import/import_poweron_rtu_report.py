@@ -177,4 +177,27 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         pass
 
     df = df[columns_to_keep]
+
+    # We have had some issues with the eTerra source data that can result in duplciate rows in the all_rtus.csv file. 
+    # Look for any duplcicate addresses based on PO_RTU, PO_Card, PO_Word where the PO_Protocol is IEC60870-101
+    # if we find any, first print out the duplciates, then order them by POType and keep the last one (thinking here is that we wnat to drop the analog which would be the first one)
+
+    # Get indices of non_control rows with IEC60870-101 protocol
+    df_iec = df[(df['PO_Protocol'] == 'IEC60870-101') & (df['PO_GenericType'] != 'C')]
+    dup_indices = df_iec[df_iec.duplicated(subset=['PO_RTU', 'PO_Card', 'PO_Word'], keep=False)].index
+    
+    if len(dup_indices) > 0:
+        print("🔍 Found duplicates in the all_rtus.csv file")
+        print(df.loc[dup_indices])
+        
+        # Sort duplicates by POType and get indices to drop
+        print("🔍 Sorting duplicates by POType")
+        df_sorted = df.loc[dup_indices].sort_values(by=['POType'])
+        indices_to_drop = df_sorted.duplicated(subset=['PO_RTU', 'PO_Card', 'PO_Word'], keep='last')
+        indices_to_drop = df_sorted[indices_to_drop].index
+        
+        # Drop duplicates from main dataframe
+        print(f"🔍 Dropping duplicates from main dataframe with indices: {indices_to_drop}")
+        df = df.drop(indices_to_drop)
+
     return df

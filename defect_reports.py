@@ -197,18 +197,18 @@ REPORT_CONFIGS = {
         ],
         'combine_with': 'and'
     },
-    'Report9': {
-        'name': 'Alarm Mismatch Manual Actions',
-        'debug': False,
-        'required_cols': ['AlarmMismatchComment'],
-        'criteria': [
-            ('AlarmMismatchComment', '!=', ''),
-            ('IGNORE_RTU', '==', False),
-            ('IGNORE_POINT', '==', False),
-            ('OLD_DATA', '==', False)
-            ],
-        'combine_with': 'and'
-    },
+    # 'Report9': {
+    #     'name': 'Alarm Mismatch Manual Actions',
+    #     'debug': False,
+    #     'required_cols': ['AlarmMismatchComment'],
+    #     'criteria': [
+    #         ('AlarmMismatchComment', '!=', ''),
+    #         ('IGNORE_RTU', '==', False),
+    #         ('IGNORE_POINT', '==', False),
+    #         ('OLD_DATA', '==', False)
+    #         ],
+    #     'combine_with': 'and'
+    # },
     'Report10': {
         'name': 'RESET w/ CtrlFunc 0', 
         'debug': False,
@@ -377,7 +377,7 @@ REPORT_CONFIGS = {
             ('Report6', '==', True),
             ('Report7', '==', True),
             ('Report8', '==', True),
-            ('Report9', '==', True),
+            # ('Report9', '==', True),
             ('Report10', '==', True),
             ('Report13', '==', True),
             ('Report14', '==', True),

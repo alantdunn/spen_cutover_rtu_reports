@@ -89,17 +89,17 @@ class RTUReportGenerator:
         
         # Default file names that will be overridden by config
         self.required_files = {
-            'report_definitions': "ReportDefinitions.xlsx",
-            'eterra_export': "habdde_eTerra_export.xlsx",
-            'habdde_compare': "habdde_compare_report.xlsx", 
-            'all_rtus': "all_rtus.csv",
-            'controls_test': "controls_test.xlsx",
-            'iccp_compare': "eterra_poweron_iccp_compare_report.xlsx",
-            'compare_alarms': "Comparison_eTerra_dl11_all_po_dl11_4.xlsx",
-            'controls_db': "controls.db",
-            'alarm_mismatch_manual_actions': "AlarmMismatchManualActions.xlsx",
-            'alarm_token_analysis': "dl12_5_3_t3_t5_analysis_v3.xlsm",
-            'check_alarms_spreadsheet_with_po_path': "checkEterraAlarms_dl12_after_scada_load_and_commissioning.xlsx"
+            'report_definitions': "",
+            'eterra_export': "",
+            'habdde_compare': "", 
+            'all_rtus': "",
+            'controls_test': "",
+            'iccp_compare': "",
+            'compare_alarms': "",
+            'controls_db': "",
+            #'alarm_mismatch_manual_actions': "AlarmMismatchManualActions.xlsx",
+            'alarm_token_analysis': "",
+            #'check_alarms_spreadsheet_with_po_path': "checkEterraAlarms_dl12_after_scada_load_and_commissioning.xlsx"
         }
             
         if Path(config_path).exists():
@@ -132,6 +132,15 @@ class RTUReportGenerator:
         print(f"write_cache: {write_cache} read_cache: {read_cache}")
         print(f"data_cache_db: {self.data_cache_db}")
 
+        if 'Databases' in self.config:
+            if 'poweron_db' in self.config['Databases']:
+                self.poweron_db = self.config['Databases']['poweron_db']
+            else:
+                print("Error: poweron_db is not specified in the config file")
+                sys.exit(1)
+        else:
+            print("Error: Databases section is not specified in the config file")
+            sys.exit(1)
         
         # Initialize dataframes
         self.report_definitions = None
@@ -151,9 +160,9 @@ class RTUReportGenerator:
         self.compare_alarms = None
         self.manual_commissioning = None
         self.merged_data = None
-        self.alarm_mismatch_manual_actions = None
         self.alarm_token_analysis = None
-        self.check_alarms_spreadsheet_with_po = None
+        #self.alarm_mismatch_manual_actions = None
+        #self.check_alarms_spreadsheet_with_po = None
 
     ''' ********** validate_data_files ********** '''
     def validate_data_files(self) -> bool:
@@ -199,7 +208,8 @@ class RTUReportGenerator:
             return
         
         # force the type of some columns to be int or bool
-        bool_columns = ['PowerOn Alias Exists','Report1', 'Report2', 'Report3', 'Report4', 'Report5', 'Report6', 'Report7', 'Report8', 'Report9', 'Report10', 'Report11', 'Report12', 'Report13', 'Report14', 'Report15', 'Report16', 'Report17', 'Report18', 'Report19', 'Report20', 'ReportANY','CompAlarmAlarmZoneMatch']
+        # removed cols: 'Report9'
+        bool_columns = ['PowerOn Alias Exists','Report1', 'Report2', 'Report3', 'Report4', 'Report5', 'Report6', 'Report7', 'Report8', 'Report10', 'Report11', 'Report12', 'Report13', 'Report14', 'Report15', 'Report16', 'Report17', 'Report18', 'Report19', 'Report20', 'ReportANY','CompAlarmAlarmZoneMatch']
         for column in bool_columns:
             # Fill NA/empty values with False before converting to bool
             self.merged_data[column] = self.merged_data[column].fillna(False)
@@ -268,7 +278,7 @@ class RTUReportGenerator:
         # set the PowerOn Alias to the eTerraAlias
         no_input_dummy_points['PowerOn Alias'] = no_input_dummy_points['eTerraAlias']
         # get the PowerOn Alias Exists by querying
-        no_input_dummy_points['PowerOn Alias Exists'] = no_input_dummy_points['PowerOn Alias'].apply(check_if_component_alias_exists_in_poweron)
+        no_input_dummy_points['PowerOn Alias Exists'] = no_input_dummy_points['PowerOn Alias'].apply(check_if_component_alias_exists_in_poweron, poweron_db=self.poweron_db)
         
 
         # Add the no_input_dummy_points to the self.eterra_point_export dataframe
@@ -307,7 +317,7 @@ class RTUReportGenerator:
             print(f" :warning: Warning: alarm token analysis file does not exist: {file_path}")
             return
         print(f" :arrow_right: Loading alarm token analysis from {file_path}")
-        self.alarm_token_analysis = pd.read_excel(file_path, sheet_name='Sheet1')
+        self.alarm_token_analysis = pd.read_excel(file_path, sheet_name='Event Detail')
         if self.debug_dir:
             self.alarm_token_analysis.to_csv(f"{self.debug_dir}/alarm_token_analysis.csv", index=False)
 
@@ -449,9 +459,9 @@ class RTUReportGenerator:
             self.load_compare_alarms()
             self.load_manual_commissioning_results()
             self.add_control_info_to_input_rows_in_eterra_export()
-            self.load_alarm_mismatch_manual_actions()
             self.load_alarm_token_analysis()
-            self.load_check_alarms_spreadsheet_with_po()
+            #self.load_alarm_mismatch_manual_actions()
+            #self.load_check_alarms_spreadsheet_with_po()
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
@@ -468,9 +478,10 @@ class RTUReportGenerator:
         merged = self.merge_iccp_compare_data(merged)
         merged = self.merge_compare_alarms_data(merged)
         merged = self.merge_control_data(merged)
-        merged = self.merge_alarm_mismatch_manual_actions(merged)
-        merged = self.add_alarm_token_analysis(merged)
-        merged = self.add_check_alarms_spreadsheet_with_po(merged)
+        #merged = self.merge_alarm_mismatch_manual_actions(merged) # add cols: AlarmMismatchComment, AlarmMismatchTemplateAlias
+        merged = self.merge_alarm_token_analysis_dl13(merged) # add cols:  T1 Comments, T3 Comments, T5 Comments, FileName, Path, FullPath, Class, CloneAlias, CloneName, RuleName, Action, Reason, Error
+        #merged = self.merge_alarm_token_analysis_dl12(merged) # add cols: T3 Analysis, T5 Analysis
+        #merged = self.add_check_alarms_spreadsheet_with_po(merged) # adds cols: Alias, Location, LocationFull
         merged = self.add_derived_columns(merged)
         merged = self.add_issue_report_flags(merged)
 
@@ -508,13 +519,13 @@ class RTUReportGenerator:
         def get_poweron_alias_exists(alias):
             if alias is None or alias == "":
                 return 0
-            exists = check_if_component_alias_exists_in_poweron(alias)
+            exists = check_if_component_alias_exists_in_poweron(alias, self.poweron_db)
             return 1 if exists is not None and exists else 0
         
         def get_poweron_alias_linked_to_scada(alias):
             if alias is None or alias == "":
                 return 0
-            linked = checkIfComponentAliasInScanPointComponents(alias)
+            linked = checkIfComponentAliasInScanPointComponents(alias, self.poweron_db)
             return  1 if linked is not None and linked else 0
         
         # 1. get_poweron_alias_exists(eTerraAlias) - returns 1/0 if the eTerraAlias exists in PowerOn
@@ -534,9 +545,10 @@ class RTUReportGenerator:
         print(f"  🧠 Adding ALARM column...")
         merged['ALARM'] = merged.apply(lambda row: True if 'ALRM' in row['eTerraKey'] else False, axis=1)
 
-        # Add a column that is the second field of the LocationFull field (delimited by ':') if this field exists, otherwise set to ''
+        # Add a column that is the second field of the FullPath field (delimited by ':') if this field exists, otherwise set to ''
+        # Note this used to use LocationFull but we have changed to FullPath in dataload13 - new spreadsheet from Bill
         print(f"  🧠 Adding TopLocation column...")
-        merged['TopLocation'] = merged.apply(lambda row: row['LocationFull'].split(':')[1] if pd.notna(row['LocationFull']) and isinstance(row['LocationFull'], str) else '', axis=1)
+        merged['TopLocation'] = merged.apply(lambda row: row['FullPath'].split(':')[1] if pd.notna(row['FullPath']) and isinstance(row['FullPath'], str) else '', axis=1)
 
         print(f"  🧠 Adding Alarm status columns...")
         # Derive the alarm status cols (for alarm number 0..3)
@@ -772,7 +784,7 @@ class RTUReportGenerator:
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}TelecontrolAction') + 1, f'Ctrl{ctrl_num}VisualCheckResult', None)
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}VisualCheckResult') + 1, f'Ctrl{ctrl_num}ControlSentResult', None)
             merged.insert(merged.columns.get_loc(f'Ctrl{ctrl_num}ControlSentResult') + 1, f'Ctrl{ctrl_num}Comments', None)
-        
+
         # Go through every row that has at least one control
         # Pre-process the lookups into dictionaries for faster access
         habdde_compare_dict = self.habdde_compare.set_index('GenericPointAddress').to_dict('index')
@@ -870,7 +882,35 @@ class RTUReportGenerator:
         print(f" ✅ Added control info to merged data on {merged.shape[0]} rows")
         return merged
     
-    def add_alarm_token_analysis(self, merged: pd.DataFrame) -> pd.DataFrame:
+    def merge_alarm_token_analysis_dl13(self, merged: pd.DataFrame) -> pd.DataFrame:
+        if self.alarm_token_analysis is None:
+            print(" :warning: Warning: alarm token analysis not available to add to merged data")
+            return merged
+        
+        print(" 🧠 Adding alarm token analysis to merged data...")
+        # print the available columns in the alarm_token_analysis dataframe
+        # print(self.alarm_token_analysis.columns)
+        # exit(0)
+
+        # the alarm_token_analysis has 3 columns we want, so get a copy with just the 3 columns
+        alarm_token_analysis_subset = self.alarm_token_analysis[['EterraAlias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'FileName', 'Path', 'FullPath', 'Class', 'CloneAlias', 'CloneName', 'RuleName', 'Action', 'Reason', 'Error']]
+        # rename the eTerraAlias column to eTerra Alias
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'EterraAlias': 'eTerra Alias'})
+        # sort the subset by eTerra Alias, T3 Analysis, T5 Analysis
+        alarm_token_analysis_subset = alarm_token_analysis_subset.sort_values(by=['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'FileName', 'Path', 'FullPath', 'Class', 'CloneAlias', 'CloneName', 'RuleName', 'Action', 'Reason', 'Error'], na_position='last')
+        # drop any duplicates, keep the first one
+        alarm_token_analysis_subset = alarm_token_analysis_subset.drop_duplicates(subset=['eTerra Alias'], keep='first')
+
+        merged = pd.merge(
+            merged,
+            alarm_token_analysis_subset,
+            on=['eTerra Alias'],
+            how='left'
+        )
+        print(f" ✅ Added dl13 alarm token analysis to merged data on {merged.shape[0]} rows")
+        return merged
+    
+    def merge_alarm_token_analysis_dl12(self, merged: pd.DataFrame) -> pd.DataFrame:
         if self.alarm_token_analysis is None:
             print(" :warning: Warning: alarm token analysis not available to add to merged data")
             return merged
@@ -950,7 +990,7 @@ class RTUReportGenerator:
             'Report6',
             'Report7',
             'Report8',
-            'Report9',
+            # 'Report9',
             'Report10',
             'Report11',
             'Report12',
