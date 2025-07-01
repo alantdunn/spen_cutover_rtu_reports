@@ -652,7 +652,7 @@ def generate_defect_report_by_name(df: pd.DataFrame, report_name: str, debug: bo
     """Generate a defect report by name"""
     if report_name not in REPORT_CONFIGS:
         raise ValueError(f"Unknown report name: {report_name}")
-    print(f"Generating report: {report_name} ... ", end='')
+    print(f" :chart_increasing: Generating report: {report_name} ... ", end='')
     updated_df = generate_defect_report(df, report_name, REPORT_CONFIGS[report_name], debug)
     print(f"{updated_df[updated_df[report_name] == True].shape[0]} matching rows. ({REPORT_CONFIGS[report_name]['name']})")
     return updated_df

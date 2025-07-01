@@ -2,10 +2,14 @@
 
 import os
 import sys
+import warnings
 import pandas as pd
 import sqlite3
 from rich import print
 from rich.progress import Progress
+
+# Suppress openpyxl data validation warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -234,12 +238,12 @@ class RTUReportGenerator:
     ''' ********** load_report_definitions ********** '''
     def load_report_definitions(self):
         report_definitions_file = self.config_path / self.required_files['report_definitions']
-        print(f" :arrow_right: Loading report definitions from {report_definitions_file}")
+        print(f" :arrow_forward: Loading report definitions from {report_definitions_file}")
         self.report_definitions = pd.read_excel(report_definitions_file, sheet_name=None)
 
     ''' ********** load_eterra_export ********** '''
     def load_eterra_export(self):
-        print(f" :arrow_right: Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_forward: Loading eTerra export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_full_point_export = import_habdde_export_point_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
         self.eterra_point_export = remove_dummy_points_from_df(self.eterra_full_point_export)
         self.eterra_dummy_point_export = get_dummy_points_from_df(self.eterra_full_point_export)
@@ -248,16 +252,16 @@ class RTUReportGenerator:
         # Create a map of RTU addresses and protocols from the eTerra export
         self.eterra_rtu_map = derive_rtu_addresses_and_protocols_from_eterra_export(self.eterra_point_export, self.debug_dir)
 
-        print(f" :arrow_right: Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_forward: Loading analog export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_analog_export = import_habdde_export_analog_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
         
-        print(f" :arrow_right: Loading control export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_forward: Loading control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_control_export = import_habdde_export_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
     ''' ********** add_no_input_controls ********** '''
     def add_no_input_controls(self):
         # Look for any controls that are not in the point export, then look for these as dummy points
-        print(f" :arrow_right: Looking for controls that are not in the point export ... ", end="")
+        print(f" :arrow_forward: Looking for controls that are not in the point export ... ", end="")
         no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
         # remove any rows that have PointId = "TAP" - these are dealt with through the TAP/TPC connection in the control load
         no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
@@ -265,7 +269,7 @@ class RTUReportGenerator:
         if self.debug_dir:
             no_input_controls.to_csv(f"{self.debug_dir}/no_input_controls.csv", index=False)
 
-        print(f" :arrow_right: Looking for dummy points for no input controls ... ", end="")
+        print(f" :arrow_forward: Looking for dummy points for no input controls ... ", end="")
         no_input_dummy_points = self.eterra_dummy_point_export[self.eterra_dummy_point_export['eTerraAlias'].isin(no_input_controls['eTerraAlias'])]
         print(f"found {no_input_dummy_points.shape[0]} dummy points.")
         if self.debug_dir:
@@ -274,11 +278,11 @@ class RTUReportGenerator:
         # make a copy of no_input_controls so we can create a vesion without eTerraAlias duplicates
         no_input_controls_deduped = no_input_controls.drop_duplicates(subset=['eTerraAlias'])
         # in the no_input_dummy_points dataframe, set the RTU to the RTU value from the corresponding row in no_input_controls_deduped
-        no_input_dummy_points['RTU'] = no_input_dummy_points['eTerraAlias'].map(no_input_controls_deduped.set_index('eTerraAlias')['RTU'])
+        no_input_dummy_points.loc[:,'RTU'] = no_input_dummy_points['eTerraAlias'].map(no_input_controls_deduped.set_index('eTerraAlias')['RTU'])
         # set the PowerOn Alias to the eTerraAlias
-        no_input_dummy_points['PowerOn Alias'] = no_input_dummy_points['eTerraAlias']
+        no_input_dummy_points.loc[:,'PowerOn Alias'] = no_input_dummy_points['eTerraAlias']
         # get the PowerOn Alias Exists by querying
-        no_input_dummy_points['PowerOn Alias Exists'] = no_input_dummy_points['PowerOn Alias'].apply(check_if_component_alias_exists_in_poweron, poweron_db=self.poweron_db)
+        no_input_dummy_points.loc[:,'PowerOn Alias Exists'] = no_input_dummy_points['PowerOn Alias'].apply(check_if_component_alias_exists_in_poweron, poweron_db=self.poweron_db)
         
 
         # Add the no_input_dummy_points to the self.eterra_point_export dataframe
@@ -302,12 +306,12 @@ class RTUReportGenerator:
 
     ''' ********** load_eterra_setpoint_control_export ********** '''
     def load_eterra_setpoint_control_export(self):
-        print(f" :arrow_right: Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_forward: Loading setpoint control export from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_setpoint_control_export = import_habdde_export_setpoint_control_tab(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
     ''' ********** load_eterra_card_tab ********** '''
     def load_eterra_card_tab(self):
-        print(f" :arrow_right: Loading card tab from {self.data_dir / self.required_files['eterra_export']}")
+        print(f" :arrow_forward: Loading card tab from {self.data_dir / self.required_files['eterra_export']}")
         self.eterra_card_tab = read_habdde_card_tab_into_df(self.data_dir / self.required_files['eterra_export'], self.debug_dir)
 
     ''' ********** load_alarm_token_analysis ********** '''
@@ -316,7 +320,7 @@ class RTUReportGenerator:
         if not file_path.exists():
             print(f" :warning: Warning: alarm token analysis file does not exist: {file_path}")
             return
-        print(f" :arrow_right: Loading alarm token analysis from {file_path}")
+        print(f" :arrow_forward: Loading alarm token analysis from {file_path}")
         self.alarm_token_analysis = pd.read_excel(file_path, sheet_name='Event Detail')
         if self.debug_dir:
             self.alarm_token_analysis.to_csv(f"{self.debug_dir}/alarm_token_analysis.csv", index=False)
@@ -327,7 +331,7 @@ class RTUReportGenerator:
         if not file_path.exists():
             print(f" :warning: Warning: check alarms spreadsheet with PO file does not exist: {file_path}")
             return
-        print(f" :arrow_right: Loading check alarms spreadsheet with PO from {file_path}")
+        print(f" :arrow_forward: Loading check alarms spreadsheet with PO from {file_path}")
         self.check_alarms_spreadsheet_with_po = pd.read_excel(file_path, sheet_name='sheet1')
         if self.debug_dir:
             self.check_alarms_spreadsheet_with_po.to_csv(f"{self.debug_dir}/check_alarms_spreadsheet_with_po.csv", index=False)
@@ -383,7 +387,7 @@ class RTUReportGenerator:
 
     ''' ********** load_habdde_compare ********** '''
     def load_habdde_compare(self):
-        print(f" :arrow_right: Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
+        print(f" :arrow_forward: Loading habdde compare from {self.data_dir / self.required_files['habdde_compare']}")
         self.habdde_compare = pd.read_csv(self.data_dir / self.required_files['habdde_compare'], low_memory=False)
         self.habdde_compare = clean_habdde_compare(self.habdde_compare)
         if self.debug_dir:
@@ -391,7 +395,7 @@ class RTUReportGenerator:
 
     ''' ********** load_poweron_data ********** '''
     def load_poweron_data(self):
-        print(f" :arrow_right: Loading poweron data from {self.data_dir / self.required_files['all_rtus']}")
+        print(f" :arrow_forward: Loading poweron data from {self.data_dir / self.required_files['all_rtus']}")
         self.all_rtus = pd.read_csv(self.data_dir / self.required_files['all_rtus'], low_memory=False)
         self.all_rtus = clean_all_rtus(self.all_rtus)
         if self.debug_dir:
@@ -399,7 +403,7 @@ class RTUReportGenerator:
 
     ''' ********** load_controls_auto_test_results ********** '''
     def load_controls_auto_test_results(self):
-        print(f" :arrow_right: Loading controls auto test results from {self.data_dir / self.required_files['controls_test']}")
+        print(f" :arrow_forward: Loading controls auto test results from {self.data_dir / self.required_files['controls_test']}")
         self.controls_test = pd.read_csv(self.data_dir / self.required_files['controls_test'])
         self.controls_test = clean_controls_test(self.controls_test, self.eterra_rtu_map)
         if self.debug_dir:
@@ -407,7 +411,7 @@ class RTUReportGenerator:
 
     ''' ********** load_compare_alarms ********** '''
     def load_compare_alarms(self):
-        print(f" :arrow_right: Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
+        print(f" :arrow_forward: Loading compare alarms from {self.data_dir / self.required_files['compare_alarms']}")
         self.compare_alarms = pd.read_excel(self.data_dir / self.required_files['compare_alarms'], sheet_name='Event Detail')
         self.compare_alarms = clean_compare_alarms(self.compare_alarms)
         if self.debug_dir:
@@ -415,7 +419,7 @@ class RTUReportGenerator:
 
     ''' ********** load_manual_commissioning_results ********** '''
     def load_manual_commissioning_results(self):
-        print(f" :arrow_right: Loading manual commissioning results from {self.data_dir / self.required_files['controls_db']}")
+        print(f" :arrow_forward: Loading manual commissioning results from {self.data_dir / self.required_files['controls_db']}")
         conn = sqlite3.connect(self.data_dir / self.required_files['controls_db'])
         self.manual_commissioning = pd.read_sql_query("SELECT * FROM test_results", conn)
         conn.close()
@@ -435,7 +439,7 @@ class RTUReportGenerator:
     def load_alarm_mismatch_manual_actions(self):
         # if the alarm_mismatch_manual_actions file exists, load it
         if (self.data_dir / self.required_files['alarm_mismatch_manual_actions']).exists():
-            print(f" :arrow_right: Loading alarm mismatch manual actions from {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
+            print(f" :arrow_forward: Loading alarm mismatch manual actions from {self.data_dir / self.required_files['alarm_mismatch_manual_actions']}")
             self.alarm_mismatch_manual_actions = pd.read_excel(self.data_dir / self.required_files['alarm_mismatch_manual_actions'], sheet_name='Sheet1')
             if self.debug_dir:
                 self.alarm_mismatch_manual_actions.to_csv(f"{self.debug_dir}/alarm_mismatch_manual_actions.csv", index=False)
@@ -486,7 +490,7 @@ class RTUReportGenerator:
         merged = self.add_issue_report_flags(merged)
 
         if self.debug_dir:
-            print(f" :arrow_right: Writing merged data to {self.debug_dir}/merged.csv")
+            print(f" :arrow_forward: Writing merged data to {self.debug_dir}/merged.csv")
             merged.to_csv(f"{self.debug_dir}/merged.csv", index=False)
         
         return merged
@@ -893,11 +897,23 @@ class RTUReportGenerator:
         # exit(0)
 
         # the alarm_token_analysis has 3 columns we want, so get a copy with just the 3 columns
-        alarm_token_analysis_subset = self.alarm_token_analysis[['EterraAlias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'FileName', 'Path', 'FullPath', 'Class', 'CloneAlias', 'CloneName', 'RuleName', 'Action', 'Reason', 'Error']]
+        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'fur_Comment', 'fur_FileName', 'fur_Path', 'fur_FullPath', 'fur_Class', 'fur_CloneAlias', 'fur_CloneName', 'fur_RuleName', 'fur_Action', 'fur_Reason', 'fur_Error', 'analysis Notes ']]
         # rename the eTerraAlias column to eTerra Alias
-        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'EterraAlias': 'eTerra Alias'})
+        #alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'EterraAlias': 'eTerra Alias'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Comment': 'AlarmAnalysisComment'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_FileName': 'FileName'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Path': 'Path'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_FullPath': 'FullPath'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Class': 'Class'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_CloneAlias': 'CloneAlias'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_CloneName': 'CloneName'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_RuleName': 'RuleName'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Action': 'Action'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Reason': 'Reason'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Error': 'Error'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'analysis Notes ': 'AnalysisNotes'})
         # sort the subset by eTerra Alias, T3 Analysis, T5 Analysis
-        alarm_token_analysis_subset = alarm_token_analysis_subset.sort_values(by=['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'FileName', 'Path', 'FullPath', 'Class', 'CloneAlias', 'CloneName', 'RuleName', 'Action', 'Reason', 'Error'], na_position='last')
+        alarm_token_analysis_subset = alarm_token_analysis_subset.sort_values(by=['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments','AnalysisNotes'], na_position='last')
         # drop any duplicates, keep the first one
         alarm_token_analysis_subset = alarm_token_analysis_subset.drop_duplicates(subset=['eTerra Alias'], keep='first')
 
@@ -918,7 +934,7 @@ class RTUReportGenerator:
         print(" 🧠 Adding alarm token analysis to merged data...")
 
         # the alarm_token_analysis has 3 columns we want, so get a copy with just the 3 columns
-        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T3 Analysis', 'T5 Analysis']]
+        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T3 Analysis', 'T5 Analysis', ]]
         # sort the subset by eTerra Alias, T3 Analysis, T5 Analysis
         alarm_token_analysis_subset = alarm_token_analysis_subset.sort_values(by=['eTerra Alias', 'T3 Analysis', 'T5 Analysis'], na_position='last')
         # drop any duplicates, keep the first one
@@ -979,7 +995,7 @@ class RTUReportGenerator:
 
         # HACK - remove RTU MICR4 from the data
         merged_data = merged_data[merged_data['RTU'] != 'MICR4']
-        print(f"Removed RTU MICR4 from the data, now have {merged_data.shape[0]} rows")
+        print(f" :cross_mark: Removed RTU MICR4 from the data, now have {merged_data.shape[0]} rows")
 
         reports_list = [
             'Report1',

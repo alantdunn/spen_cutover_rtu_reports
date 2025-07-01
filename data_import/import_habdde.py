@@ -606,7 +606,7 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
 
         # if the point id is TCP then edit the eTerraAlias to swap back to TCP
         if row['PointId'] == 'TCP':
-            control_info['eTerraAlias'] = control_info['eTerraAlias'].replace('TAP', 'TCP')
+            control_info.loc[:,'eTerraAlias'] = control_info['eTerraAlias'].replace('TAP', 'TCP')
 
         return control_info 
     

@@ -10,7 +10,7 @@ from rich.progress import Progress
 import copy
 default_sheet_name = 'Sheet1'
 
-ColumnsToCopy = ['Review Status', 'Comments', 'Assigned To']
+ColumnsToCopy = ['Review Status', 'Comments', 'Assigned To', 'Manual Status','Manual Status Desc','Manual Status Date']
 
 def debug_a_row_in_wb(wb, ColumnName, MatchValue, sheet_name=""):
     if sheet_name == "":
@@ -47,8 +47,13 @@ def read_report_df_and_wb(filename, sheet_name=default_sheet_name):
     # + ColumnsToCopy
 
     print(f" :mag_right: Reading {filename} into a dataframe...")
-    df= pd.read_excel(filename)
-    df = df[['GenericPointAddress', 'eTerraAlias'] + ColumnsToCopy]
+    df = pd.read_excel(filename)
+    
+    # Get list of columns that exist in the dataframe
+    available_columns = ['GenericPointAddress', 'eTerraAlias'] + [col for col in ColumnsToCopy if col in df.columns]
+    
+    # Select only available columns
+    df = df[available_columns]
 
     print(f" :mag_right: Reading {filename} into a workbook...")
     # Load workbook and sheet using openpyxl
