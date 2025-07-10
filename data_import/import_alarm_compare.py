@@ -46,10 +46,10 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
     # | AlarmMessageMatch       | AlarmMessageMatch
     # | AlarmZoneMatch          | AlarmZoneMatch
     # | NumControls             | 
-    # | DCB                     | 
-    # | 314                     | 
-    # | SC1E                    | 
-    # | SC2E                    | 
+    # | DCB                     | IsDCB
+    # | 314                     | Is314
+    # | SC1E                    | IsSC1E
+    # | SC2E                    | IsSC2E
     # | TemplateAlias           | 
     # | TemplateName            | 
     # | TemplateType            | 
@@ -97,7 +97,11 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
         'TemplateAlias': 'CompAlarmTemplateAlias',
         'TemplateName': 'CompAlarmTemplateName',
         'TemplateType': 'CompAlarmTemplateType',
-        'StateIndex': 'CompAlarmStateIndex'
+        'StateIndex': 'CompAlarmStateIndex',
+        'DCB': 'IsDCB',
+        '314': 'Is314',
+        'SC1E': 'IsSC1E',
+        'SC2E': 'IsSC2E'
     }, inplace=True)
 
     # Only return the columns we need
@@ -143,7 +147,11 @@ def clean_compare_alarms(df: pd.DataFrame) -> pd.DataFrame:
         'CompAlarmTemplateAlias',
         'CompAlarmTemplateName',
         'CompAlarmTemplateType',
-        'CompAlarmStateIndex'
+        'CompAlarmStateIndex',
+        'IsDCB',
+        'Is314',
+        'IsSC1E',
+        'IsSC2E'
     ]
 
     df = df[columns_to_keep]

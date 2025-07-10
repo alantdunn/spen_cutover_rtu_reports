@@ -43,6 +43,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
     # | symbol_menu             | Menu
     # | symbol_name             | Symbol
     # | telecontrol_action      | TC Action
+    # | user_tag                | UserTag
     # | verify_attribute        | 
     # | verify_value            | 
     # |                         | IOA1
@@ -77,7 +78,8 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'size': 'Size',
         'symbol_menu': 'Menu',
         'symbol_name': 'Symbol',
-        'telecontrol_action': 'TC Action'
+        'telecontrol_action': 'TC Action',
+        'user_tag': 'UserTag'
     }, inplace=True)
 
     def derive_generic_type_from_po_type(po_type):
@@ -142,6 +144,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         'ScanInputRow',
         'Shift',
         'ScanInputRef',
+        'UserTag',
         'Size',
         'POInterpretation',
         'Menu',
@@ -189,7 +192,7 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
     if len(dup_indices) > 0:
         print("🔍 Found duplicates in the all_rtus.csv file")
         print(df.loc[dup_indices])
-        
+
         # Sort duplicates by POType and get indices to drop
         print("🔍 Sorting duplicates by POType")
         df_sorted = df.loc[dup_indices].sort_values(by=['POType'])
@@ -199,5 +202,28 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
         # Drop duplicates from main dataframe
         print(f"🔍 Dropping duplicates from main dataframe with indices: {indices_to_drop}")
         df = df.drop(indices_to_drop)
+
+    # Check for duplicate GenericPointAddress values
+    dup_gpa = df[df.duplicated(subset=['GenericPointAddress'], keep=False)]
+    if len(dup_gpa) > 0:
+        print("\n⚠️  WARNING: Duplicate GenericPointAddress values found:")
+        print(dup_gpa[['GenericPointAddress', 'PO_RTU', 'PO_Card', 'PO_Word', 'POType']])
+        
+        # Group by GenericPointAddress and show the duplicated values
+        duplicates = dup_gpa.groupby('GenericPointAddress')['GenericPointAddress'].count()
+        print("\nDuplicate GenericPointAddress values:")
+        for addr, count in duplicates.items():
+            print(f"'{addr}' appears {count} times")
+        
+        print("\nThis will cause issues when using GenericPointAddress as an index.")
+        print("Please check the source data and resolve duplicates.")
+        print("Continuing with processing but merge operations may fail...\n\n")
+
+        # Ask the user if they want to continue
+        user_input = input("Do you want to continue anyway? (y/n): (recommend you do not, as this will likely crash when using GenericPointAddress as an index)")
+        if user_input.lower() != 'y':
+            print("Exiting...")
+            exit()
+
 
     return df

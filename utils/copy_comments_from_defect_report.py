@@ -10,7 +10,8 @@ from rich.progress import Progress
 import copy
 default_sheet_name = 'Sheet1'
 
-ColumnsToCopy = ['Review Status', 'Comments', 'Assigned To', 'Manual Status','Manual Status Desc','Manual Status Date']
+ColumnsToCopy = ['Review Status', 'Comments', 'Assigned To', 'Manual Status','Manual Status Desc','Manual Status Date', 'Control Fix Status','Control Fix Type']
+# ColumnsToCopy = ['Review Status', 'Comments', 'Assigned To']
 
 def debug_a_row_in_wb(wb, ColumnName, MatchValue, sheet_name=""):
     if sheet_name == "":
@@ -172,7 +173,7 @@ def get_params():
 def main():
     old_file, new_file, matchmethod, old_sheet_name, new_sheet_name = get_params()
 
-    # we need to count how many are in the old one, check theres none in the new onw and ask teh user to confrim before making the update
+    # we need to count how many are in the old one, check theres none in the new onw and ask the user to confirm before making the update
     old_wb = read_report_wb(old_file)
     # debug_a_row_in_wb(old_wb, "eTerraAlias", "TONG1/011_CB/661_13/AMPS")
     # debug_a_row_in_wb(old_wb, "eTerraAlias", "NOKY1/033_SC/WF_B/MW")

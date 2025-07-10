@@ -167,6 +167,8 @@ class RTUReportGenerator:
         self.alarm_token_analysis = None
         #self.alarm_mismatch_manual_actions = None
         #self.check_alarms_spreadsheet_with_po = None
+        self.non_commissioned_rtus = ['HAGH3','HUNER','BENB','ENHI','HELE3','RAVE3']
+        self.special_display_rtus = ['HUCS','NEIL1','NEIL2','NEILP']
 
     ''' ********** validate_data_files ********** '''
     def validate_data_files(self) -> bool:
@@ -566,6 +568,81 @@ class RTUReportGenerator:
             merged[f'Ctrl{i}V'] = merged.apply(lambda row: 1 if row[f'Ctrl{i}VisualCheckResult'] == 'OK' else 0 if row[f'Ctrl{i}VisualCheckResult'] == 'Fail' else '', axis=1)
             merged[f'Ctrl{i}C'] = merged.apply(lambda row: 1 if row[f'Ctrl{i}ControlSentResult'] == 'OK' else 0 if row[f'Ctrl{i}ControlSentResult'] == 'Fail' else '', axis=1)
 
+        print(f"  🧠 Adding HasCommissioningComments column...")
+        # Set this column to 1 if either of Ctrl1Comments or Ctrl2Comments is not empty
+        merged['HasCommissioningComments'] = merged.apply(lambda row: 1 if row['Ctrl1Comments'] != '' or row['Ctrl2Comments'] != '' else 0, axis=1)
+
+        print(f"  🧠 Adding SpecialDisplayRTU column...")
+        # Set this column to 1 if the RTU is in the list of special display RTUs
+        merged['SpecialDisplayRTU'] = merged.apply(lambda row: 1 if row['RTU'] in self.special_display_rtus else 0, axis=1)
+
+        print(f"  🧠 Adding NonCommissionedRTU column...")
+        # Set this column to 1 if the RTU is not in the list of Non Commissioned RTUs
+        merged['NonCommissionedRTU'] = merged.apply(lambda row: 1 if row['RTU'] in self.non_commissioned_rtus else 0, axis=1)
+
+        print(f"  🧠 Adding SyncClose column...")
+        def get_sync_close_flag(row):
+            if row['Ctrl1Name'] == ('CLOSE') and (row['Ctrl1SyncChannel'] == '1' or row['Ctrl1SyncChannel'] == 1):
+                return "1"
+            elif row['Ctrl2Name'] == ('CLOSE') and (row['Ctrl2SyncChannel'] == '1' or row['Ctrl2SyncChannel'] == 1):
+                return "1"
+            else:
+                return ""
+        merged['SyncClose'] = merged.apply(get_sync_close_flag, axis=1)
+        print(f"  ✅ Added SyncClose column to merged data on {merged.shape[0]} rows")
+
+        print(f"  🧠 Adding CtrlDefectType column...")
+        def get_ctrl_defect_type(row):
+            # if row is not Controllable, return ""
+            if row['Controllable'] == '0' or row['Controllable'] == 0:    
+                return ""
+            # Dont tag RTUCommss controls
+            elif row['RTUComms'] == '1' or row['RTUComms'] == 1:
+                return ""
+            # If the point has 0 NumControlsNotAllCommissionOk return "" - there is no defect
+            elif row['NumControlsNotAllCommissionOk'] == '0' or row['NumControlsNotAllCommissionOk'] == 0:
+                return ""
+            # Else try to assign a defect type
+            elif row['NonCommissionedRTU'] == '1' or row['NonCommissionedRTU'] == 1:
+                return "NonComRTU"
+            elif row['SpecialDisplayRTU'] == '1' or row['SpecialDisplayRTU'] == 1:
+                return "HUCSorNEIL"
+            elif row['IsDCB'] == '1' or row['IsDCB'] == 1:
+                return "DCB"
+            elif row['eTerraAlias'].endswith('SWDD') == True and 'DCB' in row['eTerraAlias']:
+                return "DCB"
+            elif row['Is314'] == '1' or row['Is314'] == 1:
+                return "314"
+            elif row['IsSC1E'] == '1' or row['IsSC1E'] == 1 or row['IsSC2E'] == '1' or row['IsSC2E'] == 1:
+                return "SCE"
+            elif row['Ctrl1Name'] == "RESET" or row['Ctrl2Name'] == "RESET":
+                return "RESET"
+            elif row['PointId'] == "1781" or row['PointId'] == "1781":
+                return "1781"
+            elif row['PointId'] == "GRP2" or row['PointId'] == "GRP2":
+                return "GRP2"
+            elif row['PointId'] == "P001" or row['PointId'] == "P001":
+                return "P001"
+            elif row['PointId'] == "A001" or row['PointId'] == "A001":
+                return "A001"
+            elif row['PointId'] == "B001" or row['PointId'] == "B001":
+                return "B001"
+            elif row['PointId'] == "X001" or row['PointId'] == "X001":
+                return "X001"
+            elif row['PointId'] == "LDC" or row['PointId'] == "LDC":
+                return "LDC"
+            elif row['PointId'] == "1700" or row['PointId'] == "1701" or row['PointId'] == "1702":
+                return "LMS"
+            elif row['PointId'] == "TAPC" or row['PointId'] == "TAPC":
+                return "TAPC"
+            elif row['PointId'] == "TCP" or row['PointId'] == "TCP":
+                return "TCP"
+            elif row['HasCommissioningComments'] == '1':
+                return "Comments Avail"
+            else:
+                return "???"
+        merged['CtrlDefectType'] = merged.apply(get_ctrl_defect_type, axis=1)
+        print(f"  ✅ Added CtrlDefectType column to merged data on {merged.shape[0]} rows")
 
         return merged
 
@@ -642,7 +719,11 @@ class RTUReportGenerator:
             'CompAlarmAlarmZoneMatch',
             'CompAlarmTemplateAlias',
             'CompAlarmTemplateType',
-            'CompAlarmStateIndex'
+            'CompAlarmStateIndex',
+            'IsDCB',
+            'Is314',
+            'IsSC1E',
+            'IsSC2E'
         ]
         
         # Only include columns that exist in the merged dataframe
@@ -718,7 +799,10 @@ class RTUReportGenerator:
                 
                 for idx, row in chunk.iterrows():
                     matching_alarms = alarm_lookup.get(row['eTerraAlias'], [])
-                    
+
+                    # remove any matching alarms that have no CompAlarmeTerraAlarmMessage
+                    matching_alarms = [alarm for alarm in matching_alarms if pd.notna(alarm['CompAlarmeTerraAlarmMessage']) and alarm['CompAlarmeTerraAlarmMessage'] != '']
+
                     num_alarms = len(matching_alarms)
                     num_alarms_matched = 0
                     
@@ -727,7 +811,7 @@ class RTUReportGenerator:
                         merged.at[idx, f'Alarm{value}_eTerraMessage'] = alarm_row['CompAlarmeTerraAlarmMessage']
                         merged.at[idx, f'Alarm{value}_POMessage'] = alarm_row['CompAlarmPOAlarmMessage']
                         merged.at[idx, f'Alarm{value}_MessageMatch'] = alarm_row['CompAlarmAlarmMessageMatch']
-                        if alarm_row['CompAlarmAlarmMessageMatch'] == '1':
+                        if alarm_row['CompAlarmAlarmMessageMatch'] == 1:
                             num_alarms_matched += 1
                             
                     merged.at[idx, 'NumAlarms'] = num_alarms
@@ -876,6 +960,8 @@ class RTUReportGenerator:
                 merged.at[idx, 'NumControlsConfigGood'] = num_controls_config_good
                 merged.at[idx, 'NumControlsCommissionOk'] = num_controls_commission_ok
                 merged.at[idx, 'NumControlsAllCommissionOk'] = num_controls_all_commission_ok
+                merged.at[idx, 'NumControlsNotCommissionOk'] = num_controls - num_controls_commission_ok
+                merged.at[idx, 'NumControlsNotAllCommissionOk'] = num_controls - num_controls_all_commission_ok
                 merged.at[idx, 'PercentControlsMatched'] = num_controls_matched / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsConfigGood'] = num_controls_config_good / num_controls if num_controls > 0 else 0
                 merged.at[idx, 'PercentControlsCommissionOk'] = num_controls_commission_ok / num_controls if num_controls > 0 else 0
