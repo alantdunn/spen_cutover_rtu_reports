@@ -983,13 +983,15 @@ class RTUReportGenerator:
         # exit(0)
 
         # the alarm_token_analysis has 3 columns we want, so get a copy with just the 3 columns
-        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'fur_Comment', 'fur_FileName', 'fur_Path', 'fur_FullPath', 'fur_Class', 'fur_CloneAlias', 'fur_CloneName', 'fur_RuleName', 'fur_Action', 'fur_Reason', 'fur_Error', 'analysis Notes ']]
+        #alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'fur_Comment', 'fur_FileName', 'fur_Path', 'fur_FullPath', 'fur_Class', 'fur_CloneAlias', 'fur_CloneName', 'fur_RuleName', 'fur_Action', 'fur_Reason', 'fur_Error', 'analysis Notes ']]
+        alarm_token_analysis_subset = self.alarm_token_analysis[['eTerra Alias', 'T1 Comments', 'T3 Comments', 'T5 Comments', 'fur_FileName', 'fur_Path', 'fur_FullPath', 'fur_CloneBasePathRoot', 'fur_Class', 'fur_CloneAlias', 'fur_CloneName', 'fur_RuleName', 'fur_Action', 'fur_Reason', 'fur_Error', 'analysis Notes ']]
         # rename the eTerraAlias column to eTerra Alias
         #alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'EterraAlias': 'eTerra Alias'})
-        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Comment': 'AlarmAnalysisComment'})
+        #alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Comment': 'AlarmAnalysisComment'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_FileName': 'FileName'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Path': 'Path'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_FullPath': 'FullPath'})
+        alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_CloneBasePathRoot': 'BasePathRoot'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_Class': 'Class'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_CloneAlias': 'CloneAlias'})
         alarm_token_analysis_subset = alarm_token_analysis_subset.rename(columns={'fur_CloneName': 'CloneName'})

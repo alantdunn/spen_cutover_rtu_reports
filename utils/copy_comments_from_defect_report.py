@@ -83,9 +83,28 @@ def get_dict_of_values_and_fill_color(wb, matchmethod, sheet_name=""):
         sheet_name = default_sheet_name
     ws = wb[sheet_name]
     data = {}
+    
     header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    matchmethod_index = header_row.index(matchmethod)
-    column_indices = {col: header_row.index(col) for col in ColumnsToCopy}
+    print(f"DEBUG: Header row: {header_row}")
+    print(f"DEBUG: Looking for matchmethod: {matchmethod}")
+    print(f"DEBUG: Looking for columns: {ColumnsToCopy}")
+    
+    try:
+        matchmethod_index = header_row.index(matchmethod)
+        print(f"DEBUG: Found matchmethod at index {matchmethod_index}")
+    except ValueError as e:
+        print(f"ERROR: Could not find {matchmethod} in header row")
+        raise
+        
+    try:
+        column_indices = {col: header_row.index(col) for col in ColumnsToCopy}
+        print(f"DEBUG: Column indices: {column_indices}")
+    except ValueError as e:
+        print("ERROR: Could not find one or more columns:")
+        for col in ColumnsToCopy:
+            if col not in header_row:
+                print(f"- Missing column: {col}")
+        raise
 
     for row in ws.iter_rows(min_row=2, values_only=False):
         key = row[matchmethod_index].value
