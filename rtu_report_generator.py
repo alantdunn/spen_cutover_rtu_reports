@@ -265,6 +265,7 @@ class RTUReportGenerator:
         # Look for any controls that are not in the point export, then look for these as dummy points
         print(f" :arrow_forward: Looking for controls that are not in the point export ... ", end="")
         no_input_controls = self.eterra_control_export[~self.eterra_control_export['eTerraAlias'].isin(self.eterra_point_export['eTerraAlias'])]
+
         # remove any rows that have PointId = "TAP" - these are dealt with through the TAP/TPC connection in the control load
         no_input_controls = no_input_controls[no_input_controls['PointId'] != "TAP"]
         print(f"found {no_input_controls.shape[0]} controls.")
@@ -343,7 +344,7 @@ class RTUReportGenerator:
         common_columns = [  'GenericPointAddress', 'CASDU', 'Protocol', 'RTU', 'Card',
                             'RTUAddress', 'RTUId', 'IOA2', 'IOA1', 'IOA', 'PointId', 
                             'GenericType', 'DeviceType', 'DeviceName', 'DeviceId', 
-                            'Sub', 'Word', 'eTerraKey', 'eTerraAlias', 'Controllable']
+                            'Sub', 'Word', 'eTerraKey', 'eTerraAlias', 'Controllable', 'eTerraPtyType']
         potentially_common_columns = ['IGNORE_RTU',
                             'IGNORE_POINT',
                             'OLD_DATA',
@@ -974,7 +975,24 @@ class RTUReportGenerator:
     
     def merge_alarm_token_analysis_dl13(self, merged: pd.DataFrame) -> pd.DataFrame:
         if self.alarm_token_analysis is None:
-            print(" :warning: Warning: alarm token analysis not available to add to merged data")
+            print(" :warning: Warning: alarm token analysis not available to add to merged data ... adding empty columns")
+            # add empty columns
+            merged['T1 Comments'] = ''
+            merged['T3 Comments'] = ''
+            merged['T5 Comments'] = ''
+            merged['FileName'] = ''
+            merged['Path'] = ''
+            merged['FullPath'] = ''
+            merged['BasePathRoot'] = ''
+            merged['Class'] = ''
+            merged['CloneAlias'] = ''
+            merged['CloneName'] = ''
+            merged['RuleName'] = ''
+            merged['Action'] = ''
+            merged['Reason'] = ''
+            merged['Error'] = ''
+            merged['AnalysisNotes'] = ''
+            print(f" ✅ Added empty alarm token analysis columns to merged data on {merged.shape[0]} rows")
             return merged
         
         print(" 🧠 Adding alarm token analysis to merged data...")

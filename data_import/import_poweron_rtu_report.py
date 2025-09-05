@@ -182,6 +182,10 @@ def clean_all_rtus(df: pd.DataFrame) -> pd.DataFrame:
     df = df[columns_to_keep]
 
     # We have had some issues with the eTerra source data that can result in duplciate rows in the all_rtus.csv file. 
+
+    # Start by removing the CUMW RTU - it has duplciates in dataload 14
+    df = df[df['PO_RTU'] != 'CUMW_RTU']
+
     # Look for any duplcicate addresses based on PO_RTU, PO_Card, PO_Word where the PO_Protocol is IEC60870-101
     # if we find any, first print out the duplciates, then order them by POType and keep the last one (thinking here is that we wnat to drop the analog which would be the first one)
 

@@ -321,6 +321,7 @@ def clean_eterra_analog_export(df: pd.DataFrame) -> pd.DataFrame:
         'pospolar': 'PosPolar',
         'negpolar': 'NegPolar',
         'negate': 'Negate',
+        'itpnd': 'eTerraPtyType',
     }, inplace=True)
 
     # Derive the columns we need from the columns we have
@@ -361,6 +362,7 @@ def clean_eterra_analog_export(df: pd.DataFrame) -> pd.DataFrame:
         'RawLow',
         'EngHigh',
         'EngLow',
+        'eTerraPtyType',
         'Protocol',
         'ClmpDbnd',
         'PosPolar',
@@ -627,11 +629,13 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
         eterra_export.at[_, 'Ctrl1SecureBit'] = ''
         eterra_export.at[_, 'Ctrl1SyncChannel'] = ''
         eterra_export.at[_, 'Ctrl1IECSingleDouble'] = ''
+        eterra_export.at[_, 'Ctrl1Func'] = ''
         eterra_export.at[_, 'Ctrl2Addr'] = ''
         eterra_export.at[_, 'Ctrl2Name'] = ''
         eterra_export.at[_, 'Ctrl2SecureBit'] = ''
         eterra_export.at[_, 'Ctrl2SyncChannel'] = ''
         eterra_export.at[_, 'Ctrl2IECSingleDouble'] = ''
+        eterra_export.at[_, 'Ctrl2Func'] = ''
 
         if row['Controllable'] == '1':
             # Get the control info from the eterra control and eterra setpoint control dataframes
@@ -642,21 +646,34 @@ def add_control_info_to_eterra_export(eterra_export: pd.DataFrame, eterra_contro
                 # Add the first control info to the eterra export dataframe
                 eterra_export.at[_, 'Ctrl1Addr'] = control_info.iloc[0]['GenericPointAddress']
                 eterra_export.at[_, 'Ctrl1Name'] = control_info.iloc[0]['ControlId']
+                eterra_export.at[_, 'Ctrl1Func'] = control_info.iloc[0]['CtrlFunc']
                 # for Mk2a controls, the secure bit is in mdlparm1, the sync channel is in mdlparm2, for IEC controls, the IEC single/double is in mdlparm2
                 if control_info.iloc[0]['Protocol'] == 'MK2A':
                     eterra_export.at[_, 'Ctrl1SecureBit'] = control_info.iloc[0]['Parm1']
                     eterra_export.at[_, 'Ctrl1SyncChannel'] = control_info.iloc[0]['Parm2']
                 else:
                     eterra_export.at[_, 'Ctrl1IECSingleDouble'] = control_info.iloc[0]['Parm2']
+                    # if the control is a CLOSE control, look for a matching SC1E point and set the Ctrl1SyncChannel to 1
+                    if control_info.iloc[0]['ControlId'] == 'CLOSE':
+                        sc1e_point = eterra_export[eterra_export['eTerraAlias'] == row['eTerraAlias'].replace('SWDD', 'SC1E')]
+                        if sc1e_point.shape[0] > 0:
+                            eterra_export.at[_, 'Ctrl1SyncChannel'] = 1
+
             if control_info.shape[0] > 1:
                 # Add the second control info to the eterra export dataframe
                 eterra_export.at[_, 'Ctrl2Addr'] = control_info.iloc[1]['GenericPointAddress']
                 eterra_export.at[_, 'Ctrl2Name'] = control_info.iloc[1]['ControlId']
+                eterra_export.at[_, 'Ctrl2Func'] = control_info.iloc[1]['CtrlFunc']
                 if control_info.iloc[1]['Protocol'] == 'MK2A':
                     eterra_export.at[_, 'Ctrl2SecureBit'] = control_info.iloc[1]['Parm1']
                     eterra_export.at[_, 'Ctrl2SyncChannel'] = control_info.iloc[1]['Parm2']
                 else:
                     eterra_export.at[_, 'Ctrl2IECSingleDouble'] = control_info.iloc[1]['Parm2']
+                    # if the control is a CLOSE control, look for a matching SC1E point and set the Ctrl2SyncChannel to 1
+                    if control_info.iloc[1]['ControlId'] == 'CLOSE':
+                        sc1e_point = eterra_export[eterra_export['eTerraAlias'] == row['eTerraAlias'].replace('SWDD', 'SC1E')]
+                        if sc1e_point.shape[0] > 0:
+                            eterra_export.at[_, 'Ctrl2SyncChannel'] = 1
 
         if row['GenericType'] == 'A':
             # Get the control info from the eterra setpoint control dataframe
